@@ -1,0 +1,45 @@
+
+name: Build NOVA IPTV for Windows
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Windows Application
+    runs-on: windows-latest
+
+    steps:
+      - name: Download Project
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Check Flutter
+        run: flutter doctor -v
+
+      - name: Prepare Windows Platform
+        run: flutter create --platforms=windows .
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Build NOVA IPTV
+        run: flutter build windows --release
+
+      - name: Upload Windows Application
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOVA-IPTV-Windows
+          path: build/windows/x64/runner/Release/
+          if-no-files-found: error
+          retention-days: 14

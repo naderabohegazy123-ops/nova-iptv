@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -49,12 +50,14 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final favorites = await _libraryStorage.getFavorites();
       final history = await _libraryStorage.getHistory();
+      final savedM3u = await _libraryStorage.getM3uChannels();
 
       if (!mounted) return;
 
       setState(() {
         _favorites = favorites;
         _history = history;
+        _channels = savedM3u;
       });
 
       final saved = await _accountStorage.read();
@@ -175,7 +178,9 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() => _busy = false);
       }
 
-      _notice('Connection failed. Check your subscription and try again.');
+      _notice(
+        'Connection failed. Check your subscription and try again.',
+      );
     } finally {
       service.close();
     }
@@ -481,8 +486,8 @@ class _HomeScreenState extends State<HomeScreen> {
         final uri = Uri.tryParse(value);
 
         if (uri == null ||
-            !uri.hasScheme ||
-            !uri.hasAuthority) {
+            !uri.hasAuthority ||
+            (uri.scheme != 'http' && uri.scheme != 'https')) {
           throw const FormatException('Invalid playlist URL');
         }
 
@@ -503,6 +508,7 @@ class _HomeScreenState extends State<HomeScreen> {
         throw const FormatException('Empty playlist');
       }
 
+      await _libraryStorage.saveM3uChannels(parsed);
       await _accountStorage.delete();
 
       if (!mounted) return;
@@ -517,13 +523,15 @@ class _HomeScreenState extends State<HomeScreen> {
         _busy = false;
       });
 
-      _notice('Loaded ${parsed.length} playlist entries.');
+      _notice('Loaded and saved ${parsed.length} playlist entries.');
     } catch (_) {
       if (mounted) {
         setState(() => _busy = false);
       }
 
-      _notice('Could not load playlist. Check the URL or content.');
+      _notice(
+        'Could not load playlist. Check the URL or content.',
+      );
     }
   }
 
@@ -623,14 +631,17 @@ class _HomeScreenState extends State<HomeScreen> {
     if (remove == true) {
       await _accountStorage.delete();
 
+      final savedM3u = await _libraryStorage.getM3uChannels();
+
       if (!mounted) return;
 
       setState(() {
         _account = null;
-        _channels = [];
+        _channels = savedM3u;
         _movies = [];
         _series = [];
         _section = 'Live TV';
+        _filter = 'All';
       });
 
       _notice('Saved subscription removed.');

@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -7,6 +8,7 @@ import '../services/account_storage.dart';
 import '../services/library_storage.dart';
 import '../services/m3u_parser.dart';
 import '../services/xtream_service.dart';
+import 'movie_details_screen.dart';
 import 'player_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -299,6 +301,8 @@ class _HomeScreenState extends State<HomeScreen> {
           url: _streamUrl(account, 'movie', id, extension),
           logo: e['stream_icon']?.toString(),
           group: categoryNames[categoryId] ?? 'Other',
+          year: e['year']?.toString(),
+          rating: e['rating']?.toString(),
         );
       }).toList();
 
@@ -445,6 +449,55 @@ class _HomeScreenState extends State<HomeScreen> {
       _notice('Could not load series episodes.');
     } finally {
       service.close();
+    }
+  }
+
+  Future<void> _openMovie(
+    Channel channel, {
+    List<Channel>? queue,
+  }) async {
+    final account = _account;
+
+    if (account == null) {
+      _notice('Connect an Xtream account to view movie details.');
+      return;
+    }
+
+    final movieQueue = (queue ?? [channel])
+        .where((item) => item.contentType == 'movie')
+        .toList();
+
+    final safeQueue = movieQueue.isEmpty
+        ? [channel]
+        : movieQueue;
+
+    final movieIndex = safeQueue.indexWhere(
+      (item) => item.uniqueKey == channel.uniqueKey,
+    );
+
+    final startIndex = movieIndex < 0 ? 0 : movieIndex;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (detailsContext) => MovieDetailsScreen(
+          account: account,
+          channel: channel,
+          onPlay: () {
+            Navigator.pop(detailsContext);
+
+            _play(
+              channel,
+              queue: safeQueue,
+              index: startIndex,
+            );
+          },
+        ),
+      ),
+    );
+
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -735,7 +788,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         : _section == 'Series'
                             ? _buildSeries()
                             : Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
                                 children: [
                                   if (currentItems.isNotEmpty)
                                     _buildCategorySidebar(groups),
@@ -1224,17 +1278,27 @@ class _HomeScreenState extends State<HomeScreen> {
       itemBuilder: (context, index) {
         final channel = items[index];
         final favorite = _favorites.contains(channel.uniqueKey);
+        final isMovie = channel.contentType == 'movie';
 
         return Material(
           color: _card,
           borderRadius: BorderRadius.circular(12),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            onTap: () => _play(
-              channel,
-              queue: items,
-              index: index,
-            ),
+            onTap: () {
+              if (isMovie) {
+                _openMovie(
+                  channel,
+                  queue: items,
+                );
+              } else {
+                _play(
+                  channel,
+                  queue: items,
+                  index: index,
+                );
+              }
+            },
             child: Padding(
               padding: const EdgeInsets.all(11),
               child: Row(
@@ -1266,17 +1330,17 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        const Row(
+                        Row(
                           children: [
                             Icon(
                               Icons.circle,
                               color: _mint,
                               size: 6,
                             ),
-                            SizedBox(width: 5),
+                            const SizedBox(width: 5),
                             Text(
-                              'Available',
-                              style: TextStyle(
+                              isMovie ? 'Movie' : 'Available',
+                              style: const TextStyle(
                                 color: _mint,
                                 fontSize: 9,
                               ),
@@ -1311,8 +1375,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: _mint.withValues(alpha: 0.13),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(
-                          Icons.play_arrow_rounded,
+                        child: Icon(
+                          isMovie
+                              ? Icons.info_outline_rounded
+                              : Icons.play_arrow_rounded,
                           color: _mint,
                           size: 21,
                         ),

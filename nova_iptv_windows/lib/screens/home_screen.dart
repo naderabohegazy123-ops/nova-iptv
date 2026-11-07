@@ -56,7 +56,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _account = saved;
       _server.text = saved.server;
       _username.text = saved.username;
-
       await _connectXtream(saved, saveAccount: false);
     }
 
@@ -110,13 +109,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final categoryNames = {
         for (final c in categories)
-          c['category_id'].toString(): c['category_name']?.toString() ?? 'Other'
+          c['category_id'].toString():
+              c['category_name']?.toString() ?? 'Other'
       };
 
       final parsed = liveRows.map((e) {
         final id = e['stream_id'].toString();
         final extension =
-            (e['container_extension'] ?? 'ts').toString().replaceFirst('.', '');
+            (e['container_extension'] ?? 'ts')
+                .toString()
+                .replaceFirst('.', '');
 
         final categoryId = e['category_id']?.toString();
 
@@ -141,6 +143,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
       _account = account;
       _channels = parsed;
+      _movies = [];
+      _series = [];
       _filter = 'All';
 
       if (mounted) {
@@ -151,11 +155,8 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       _notice('Connected. Loaded ${parsed.length} live channels.');
-    } catch (e) {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
-
+    } catch (_) {
+      if (mounted) setState(() => _busy = false);
       _notice('Connection failed. Check your subscription and try again.');
     } finally {
       service.close();
@@ -232,13 +233,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final categoryNames = {
         for (final c in categories)
-          c['category_id'].toString(): c['category_name']?.toString() ?? 'Other'
+          c['category_id'].toString():
+              c['category_name']?.toString() ?? 'Other'
       };
 
       _movies = rows.map((e) {
         final id = e['stream_id'].toString();
         final extension =
-            (e['container_extension'] ?? 'mp4').toString().replaceFirst('.', '');
+            (e['container_extension'] ?? 'mp4')
+                .toString()
+                .replaceFirst('.', '');
         final categoryId = e['category_id']?.toString();
 
         return Channel(
@@ -293,14 +297,11 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       final episodes = details['episodes'];
-
       final List<dynamic> allEpisodes = [];
 
       if (episodes is Map) {
         for (final season in episodes.values) {
-          if (season is List) {
-            allEpisodes.addAll(season);
-          }
+          if (season is List) allEpisodes.addAll(season);
         }
       } else if (episodes is List) {
         allEpisodes.addAll(episodes);
@@ -321,7 +322,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     itemCount: allEpisodes.length,
                     itemBuilder: (context, index) {
                       final episode = allEpisodes[index];
-                      final id = (episode['id'] ?? episode['episode_id']).toString();
+                      final id =
+                          (episode['id'] ?? episode['episode_id']).toString();
                       final extension =
                           (episode['container_extension'] ?? 'mp4')
                               .toString()
@@ -331,8 +333,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         id: id,
                         extension: extension,
                         contentType: 'episode',
-                        name: (episode['title'] ?? 'Episode ${index + 1}').toString(),
-                        url: _streamUrl(_account!, 'series', id, extension),
+                        name: (episode['title'] ??
+                                'Episode ${index + 1}')
+                            .toString(),
+                        url: _streamUrl(
+                          _account!,
+                          'series',
+                          id,
+                          extension,
+                        ),
                         group: item['name']?.toString() ?? 'Series',
                       );
 
@@ -377,7 +386,6 @@ class _HomeScreenState extends State<HomeScreen> {
             maxLines: 6,
             decoration: const InputDecoration(
               labelText: 'Playlist URL or pasted M3U content',
-              hintText: 'https://.../playlist.m3u or #EXTM3U',
               border: OutlineInputBorder(),
             ),
           ),
@@ -388,7 +396,8 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, _playlist.text.trim()),
+            onPressed: () =>
+                Navigator.pop(context, _playlist.text.trim()),
             child: const Text('Add'),
           ),
         ],
@@ -411,6 +420,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _channels = parsed;
+          _movies = [];
+          _series = [];
+          _account = null;
           _section = 'Live TV';
           _filter = 'All';
           _busy = false;
@@ -438,7 +450,11 @@ class _HomeScreenState extends State<HomeScreen> {
     await _libraryStorage.saveFavorites(_favorites);
   }
 
-  Future<void> _play(Channel channel) async {
+  Future<void> _play(
+    Channel channel, {
+    List<Channel>? queue,
+    int index = 0,
+  }) async {
     final key = channel.uniqueKey;
 
     _history.remove(key);
@@ -455,7 +471,11 @@ class _HomeScreenState extends State<HomeScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => PlayerScreen(channel: channel),
+        builder: (_) => PlayerScreen(
+          channel: channel,
+          playlist: queue ?? [channel],
+          initialIndex: index,
+        ),
       ),
     );
 
@@ -528,7 +548,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _ => _channels,
     };
 
-    final groups = currentItems.map((c) => c.group).toSet().toList()..sort();
+    final groups = currentItems.map((c) => c.group).toSet().toList()
+      ..sort();
 
     final filtered = currentItems.where((c) {
       final q = _search.text.toLowerCase();
@@ -564,7 +585,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const Text(
                   'IPTV PLAYER',
-                  style: TextStyle(color: Colors.white38, letterSpacing: 2, fontSize: 10),
+                  style: TextStyle(
+                    color: Colors.white38,
+                    letterSpacing: 2,
+                    fontSize: 10,
+                  ),
                 ),
                 const SizedBox(height: 36),
                 for (final item in [
@@ -585,7 +610,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       leading: Icon(item.$2, size: 19),
-                      title: Text(item.$1, style: const TextStyle(fontSize: 13)),
+                      title: Text(
+                        item.$1,
+                        style: const TextStyle(fontSize: 13),
+                      ),
                       onTap: () {
                         if (item.$1 == 'Settings') {
                           _settings();
@@ -653,10 +681,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         DropdownButton<String>(
                           value: _filter,
                           items: ['All', ...groups]
-                              .map((g) => DropdownMenuItem(
-                                    value: g,
-                                    child: Text(g),
-                                  ))
+                              .map(
+                                (g) => DropdownMenuItem(
+                                  value: g,
+                                  child: Text(g),
+                                ),
+                              )
                               .toList(),
                           onChanged: (v) =>
                               setState(() => _filter = v ?? 'All'),
@@ -710,7 +740,11 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Expanded(
                   child: InkWell(
-                    onTap: () => _play(channel),
+                    onTap: () => _play(
+                      channel,
+                      queue: items,
+                      index: index,
+                    ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -739,7 +773,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     IconButton(
-                      tooltip: favorite ? 'Remove favorite' : 'Add favorite',
+                      tooltip:
+                          favorite ? 'Remove favorite' : 'Add favorite',
                       onPressed: () => _toggleFavorite(channel),
                       icon: Icon(
                         favorite ? Icons.star : Icons.star_border,
@@ -750,7 +785,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     IconButton(
                       tooltip: 'Play',
-                      onPressed: () => _play(channel),
+                      onPressed: () => _play(
+                        channel,
+                        queue: items,
+                        index: index,
+                      ),
                       icon: const Icon(Icons.play_arrow),
                     ),
                   ],
@@ -764,9 +803,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSeries() {
-    if (_series.isEmpty) {
-      return _emptyState();
-    }
+    if (_series.isEmpty) return _emptyState();
 
     return GridView.builder(
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -804,11 +841,18 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.live_tv, size: 66, color: Color(0xFF40D9C4)),
+          const Icon(
+            Icons.live_tv,
+            size: 66,
+            color: Color(0xFF40D9C4),
+          ),
           const SizedBox(height: 16),
           const Text(
             'Your screen. Your channels.',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 7),
           const Text(

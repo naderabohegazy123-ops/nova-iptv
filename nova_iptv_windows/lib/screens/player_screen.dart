@@ -1,9 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-
 import '../models/channel.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -19,10 +16,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late final Player _player;
   late final VideoController _controller;
 
-  StreamSubscription<String>? _errorSubscription;
-
-  bool _loading = true;
   String? _error;
+  bool _loading = true;
 
   @override
   void initState() {
@@ -31,11 +26,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _player = Player();
     _controller = VideoController(_player);
 
-    _errorSubscription = _player.stream.error.listen((message) {
-      if (!mounted) return;
+    _player.stream.error.listen((error) {
+      if (!mounted || error.isEmpty) return;
 
       setState(() {
-        _error = message;
+        _error = error;
         _loading = false;
       });
     });
@@ -45,27 +40,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _start() async {
     try {
-      await _player.open(Media(widget.channel.url));
+      await _player.open(
+        Media(widget.channel.url),
+        play: true,
+      );
 
-      if (!mounted) return;
-
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _error = 'Unable to play this channel.';
+          _loading = false;
+        });
+      }
     }
   }
 
   @override
   void dispose() {
-    _errorSubscription?.cancel();
-    unawaited(_player.dispose());
+    _player.dispose();
     super.dispose();
   }
 
@@ -81,36 +76,82 @@ class _PlayerScreenState extends State<PlayerScreen> {
         child: _error != null
             ? Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(
-                  'Playback error\n$_error',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      color: Colors.redAccent,
+                      size: 48,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Playback failed',
+                      style: TextStyle(fontSize: 20),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white54),
+                    ),
+                    const SizedBox(height: 18),
+                    FilledButton(
+                      onPressed: () {
+                        setState(() {
+                          _error = null;
+                          _loading = true;
+                        });
+                        _start();
+                      },
+                      child: const Text('Retry'),
+                    ),
+                  ],
                 ),
               )
-            : Stack(
-                alignment: Alignment.center,
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Video(
-                    controller: _controller,
-                    controls: MaterialDesktopVideoControls,
-                  ),
-
-                  if (_loading)
-                    const CircularProgressIndicator(
-                      color: Color(0xFF40D9C4),
+                  Expanded(
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Video(controller: _controller),
+                        if (_loading)
+                          const CircularProgressIndicator(
+                            color: Color(0xFF40D9C4),
+                          ),
+                      ],
                     ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        StreamBuilder<bool>(
+                          stream: _player.stream.playing,
+                          initialData: false,
+                          builder: (context, snapshot) {
+                            final playing = snapshot.data ?? false;
 
-                  StreamBuilder<bool>(
-                    stream: _player.stream.buffering,
-                    builder: (context, snapshot) {
-                      if (snapshot.data != true || _error != null) {
-                        return const SizedBox.shrink();
-                      }
-
-                      return const CircularProgressIndicator(
-                        color: Color(0xFF40D9C4),
-                      );
-                    },
+                            return IconButton.filled(
+                              iconSize: 32,
+                              onPressed: () {
+                                if (playing) {
+                                  _player.pause();
+                                } else {
+                                  _player.play();
+                                }
+                              },
+                              icon: Icon(
+                                playing ? Icons.pause : Icons.play_arrow,
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

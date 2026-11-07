@@ -18,6 +18,11 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const Color _background = Color(0xFF080D17);
+  static const Color _sidebar = Color(0xFF0D1524);
+  static const Color _card = Color(0xFF121D2E);
+  static const Color _mint = Color(0xFF40D9C4);
+
   final _search = TextEditingController();
   final _server = TextEditingController();
   final _username = TextEditingController();
@@ -38,12 +43,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _section = 'Live TV';
   String _filter = 'All';
+
   bool _busy = false;
 
   @override
   void initState() {
     super.initState();
     _initialize();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    _server.dispose();
+    _username.dispose();
+    _password.dispose();
+    _playlist.dispose();
+    super.dispose();
   }
 
   Future<void> _initialize() async {
@@ -76,21 +92,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _search.dispose();
-    _server.dispose();
-    _username.dispose();
-    _password.dispose();
-    _playlist.dispose();
-    super.dispose();
-  }
-
   void _notice(String message) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
@@ -252,9 +261,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (account == null || _movies.isNotEmpty) return;
 
-    if (mounted) {
-      setState(() => _busy = true);
-    }
+    setState(() => _busy = true);
 
     final service = XtreamService();
 
@@ -314,9 +321,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (account == null || _series.isNotEmpty) return;
 
-    if (mounted) {
-      setState(() => _busy = true);
-    }
+    setState(() => _busy = true);
 
     final service = XtreamService();
 
@@ -587,6 +592,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _section = section;
       _filter = 'All';
+      _search.clear();
     });
 
     if (section == 'Movies') {
@@ -648,204 +654,91 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  List<Channel> _currentItems() {
+    switch (_section) {
+      case 'Movies':
+        return _movies;
+
+      case 'Favorites':
+        return [
+          ..._channels,
+          ..._movies,
+        ].where((c) => _favorites.contains(c.uniqueKey)).toList();
+
+      case 'Recently played':
+        final items = [
+          ..._channels,
+          ..._movies,
+        ].where((c) => _history.contains(c.uniqueKey)).toList();
+
+        items.sort(
+          (a, b) => _history
+              .indexOf(a.uniqueKey)
+              .compareTo(_history.indexOf(b.uniqueKey)),
+        );
+
+        return items;
+
+      default:
+        return _channels;
+    }
+  }
+
+  List<Channel> _filteredItems() {
+    final items = _currentItems();
+    final query = _search.text.toLowerCase();
+
+    return items.where((channel) {
+      final matchesGroup =
+          _filter == 'All' || channel.group == _filter;
+
+      final matchesSearch =
+          query.isEmpty || channel.name.toLowerCase().contains(query);
+
+      return matchesGroup && matchesSearch;
+    }).toList();
+  }
+
+  List<String> _groups() {
+    final groups = _currentItems()
+        .map((channel) => channel.group)
+        .toSet()
+        .toList();
+
+    groups.sort();
+
+    return groups;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final currentItems = switch (_section) {
-      'Movies' => _movies,
-      'Favorites' => [
-          ..._channels,
-          ..._movies,
-        ].where((c) => _favorites.contains(c.uniqueKey)).toList(),
-      'Recently played' => [
-          ..._channels,
-          ..._movies,
-        ].where((c) => _history.contains(c.uniqueKey)).toList()
-          ..sort(
-            (a, b) => _history
-                .indexOf(a.uniqueKey)
-                .compareTo(_history.indexOf(b.uniqueKey)),
-          ),
-      _ => _channels,
-    };
-
-    final groups = currentItems
-        .map((c) => c.group)
-        .toSet()
-        .toList()
-      ..sort();
-
-    final filtered = currentItems.where((c) {
-      final q = _search.text.toLowerCase();
-
-      return (_filter == 'All' || c.group == _filter) &&
-          (q.isEmpty || c.name.toLowerCase().contains(q));
-    }).toList();
+    final items = _filteredItems();
+    final groups = _groups();
 
     return Scaffold(
+      backgroundColor: _background,
       body: Row(
         children: [
-          Container(
-            width: 218,
-            color: const Color(0xFF0D1524),
-            padding: const EdgeInsets.fromLTRB(18, 28, 12, 18),
+          _buildMainSidebar(),
+          Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
-                  children: [
-                    Icon(
-                      Icons.play_circle_fill,
-                      color: Color(0xFF40D9C4),
-                      size: 30,
-                    ),
-                    SizedBox(width: 9),
-                    Text(
-                      'NOVA',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                  ],
-                ),
-                const Text(
-                  'IPTV PLAYER',
-                  style: TextStyle(
-                    color: Colors.white38,
-                    letterSpacing: 2,
-                    fontSize: 10,
-                  ),
-                ),
-                const SizedBox(height: 36),
-                for (final item in [
-                  ('Live TV', Icons.live_tv),
-                  ('Movies', Icons.movie_outlined),
-                  ('Series', Icons.video_library_outlined),
-                  ('Favorites', Icons.star_border),
-                  ('Recently played', Icons.history),
-                  ('Settings', Icons.settings_outlined),
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 7),
-                    child: ListTile(
-                      dense: true,
-                      selected: _section == item.$1,
-                      selectedTileColor: const Color(0xFF19333A),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      leading: Icon(item.$2, size: 19),
-                      title: Text(
-                        item.$1,
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                      onTap: () {
-                        if (item.$1 == 'Settings') {
-                          _settings();
-                        } else {
-                          _openSection(item.$1);
-                        }
-                      },
-                    ),
-                  ),
-                const Spacer(),
-                const Text(
-                  'NOVA IPTV • v0.3',
-                  style: TextStyle(
-                    color: Colors.white30,
-                    fontSize: 10,
-                  ),
+                _buildTopBar(),
+                Expanded(
+                  child: _busy
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            color: _mint,
+                          ),
+                        )
+                      : _section == 'Series'
+                          ? _buildSeries()
+                          : _buildLibrary(
+                              items,
+                              groups,
+                            ),
                 ),
               ],
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(28, 25, 28, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        _section,
-                        style: const TextStyle(
-                          fontSize: 27,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      OutlinedButton.icon(
-                        onPressed: _addM3u,
-                        icon: const Icon(Icons.link),
-                        label: const Text('Add M3U'),
-                      ),
-                      const SizedBox(width: 9),
-                      FilledButton.icon(
-                        onPressed: _addXtream,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add Xtream'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 22),
-                  if (_section != 'Series' &&
-                      _section != 'Settings') ...[
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: 310,
-                          child: TextField(
-                            controller: _search,
-                            onChanged: (_) => setState(() {}),
-                            decoration: const InputDecoration(
-                              hintText: 'Search...',
-                              prefixIcon: Icon(Icons.search),
-                              isDense: true,
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        DropdownButton<String>(
-                          value: _filter,
-                          items: ['All', ...groups]
-                              .map(
-                                (g) => DropdownMenuItem(
-                                  value: g,
-                                  child: Text(g),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) {
-                            setState(() => _filter = v ?? 'All');
-                          },
-                        ),
-                        const Spacer(),
-                        Text(
-                          '${filtered.length} items',
-                          style: const TextStyle(
-                            color: Colors.white54,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                  ],
-                  Expanded(
-                    child: _busy
-                        ? const Center(
-                            child: CircularProgressIndicator(),
-                          )
-                        : _section == 'Series'
-                            ? _buildSeries()
-                            : filtered.isEmpty
-                                ? _emptyState()
-                                : _buildGrid(filtered),
-                  ),
-                ],
-              ),
             ),
           ),
         ],
@@ -853,12 +746,363 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildMainSidebar() {
+    return Container(
+      width: 215,
+      color: _sidebar,
+      padding: const EdgeInsets.fromLTRB(16, 28, 12, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.play_circle_fill,
+                color: _mint,
+                size: 32,
+              ),
+              SizedBox(width: 9),
+              Text(
+                'NOVA',
+                style: TextStyle(
+                  fontSize: 23,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          const Padding(
+            padding: EdgeInsets.only(left: 41),
+            child: Text(
+              'IPTV PLAYER',
+              style: TextStyle(
+                color: Colors.white38,
+                letterSpacing: 2,
+                fontSize: 9,
+              ),
+            ),
+          ),
+          const SizedBox(height: 38),
+          _navItem('Live TV', Icons.live_tv),
+          _navItem('Movies', Icons.movie_outlined),
+          _navItem('Series', Icons.video_library_outlined),
+          const SizedBox(height: 18),
+          const Padding(
+            padding: EdgeInsets.only(left: 13, bottom: 9),
+            child: Text(
+              'MY LIBRARY',
+              style: TextStyle(
+                color: Colors.white38,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+          _navItem('Favorites', Icons.star_border),
+          _navItem('Recently played', Icons.history),
+          const Spacer(),
+          _navItem('Settings', Icons.settings_outlined),
+          const SizedBox(height: 12),
+          const Divider(color: Colors.white12),
+          const SizedBox(height: 8),
+          const Text(
+            'NOVA IPTV',
+            style: TextStyle(
+              color: Colors.white30,
+              fontSize: 10,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Windows Edition • v0.3',
+            style: TextStyle(
+              color: Colors.white24,
+              fontSize: 9,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _navItem(String title, IconData icon) {
+    final selected = _section == title;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Material(
+        color: selected
+            ? const Color(0xFF19333A)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(9),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(9),
+          onTap: () {
+            if (title == 'Settings') {
+              _settings();
+            } else {
+              _openSection(title);
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 12,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 19,
+                  color: selected ? _mint : Colors.white60,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight:
+                          selected ? FontWeight.bold : FontWeight.normal,
+                      color: selected ? Colors.white : Colors.white70,
+                    ),
+                  ),
+                ),
+                if (selected)
+                  Container(
+                    width: 5,
+                    height: 5,
+                    decoration: const BoxDecoration(
+                      color: _mint,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopBar() {
+    return Container(
+      height: 88,
+      padding: const EdgeInsets.symmetric(horizontal: 27),
+      decoration: const BoxDecoration(
+        color: _background,
+        border: Border(
+          bottom: BorderSide(color: Colors.white10),
+        ),
+      ),
+      child: Row(
+        children: [
+          Text(
+            _section,
+            style: const TextStyle(
+              fontSize: 25,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 9,
+              vertical: 5,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(0xFF19333A),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              _section == 'Series'
+                  ? '${_series.length} series'
+                  : '${_currentItems().length} items',
+              style: const TextStyle(
+                color: _mint,
+                fontSize: 10,
+              ),
+            ),
+          ),
+          const Spacer(),
+          OutlinedButton.icon(
+            onPressed: _addM3u,
+            icon: const Icon(Icons.link, size: 17),
+            label: const Text('Add M3U'),
+          ),
+          const SizedBox(width: 9),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: _mint,
+              foregroundColor: const Color(0xFF07131B),
+            ),
+            onPressed: _addXtream,
+            icon: const Icon(Icons.add, size: 17),
+            label: const Text('Add Xtream'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLibrary(
+    List<Channel> items,
+    List<String> groups,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 43,
+                  child: TextField(
+                    controller: _search,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText: 'Search ${_section.toLowerCase()}...',
+                      prefixIcon: const Icon(Icons.search, size: 19),
+                      filled: true,
+                      fillColor: _card,
+                      contentPadding: EdgeInsets.zero,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(9),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 15),
+              Text(
+                '${items.length} results',
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildCategorySidebar(groups),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: items.isEmpty
+                      ? _emptyState()
+                      : _buildGrid(items),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategorySidebar(List<String> groups) {
+    return Container(
+      width: 175,
+      decoration: BoxDecoration(
+        color: _sidebar,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(11),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(9, 8, 8, 14),
+            child: Text(
+              'CATEGORIES',
+              style: TextStyle(
+                color: Colors.white38,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.3,
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              children: [
+                _categoryItem('All', Icons.grid_view),
+                for (final group in groups)
+                  _categoryItem(
+                    group,
+                    Icons.folder_outlined,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _categoryItem(String name, IconData icon) {
+    final selected = _filter == name;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: selected
+            ? const Color(0xFF19333A)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(7),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(7),
+          onTap: () => setState(() => _filter = name),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 9,
+              vertical: 10,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 15,
+                  color: selected ? _mint : Colors.white54,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: selected ? Colors.white : Colors.white60,
+                      fontWeight:
+                          selected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildGrid(List<Channel> items) {
     return GridView.builder(
+      padding: const EdgeInsets.only(bottom: 12),
       gridDelegate:
           const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 245,
-        mainAxisExtent: 125,
+        maxCrossAxisExtent: 215,
+        mainAxisExtent: 190,
         crossAxisSpacing: 13,
         mainAxisSpacing: 13,
       ),
@@ -866,74 +1110,172 @@ class _HomeScreenState extends State<HomeScreen> {
       itemBuilder: (context, index) {
         final channel = items[index];
         final favorite = _favorites.contains(channel.uniqueKey);
+        final isMovie = channel.contentType == 'movie';
 
-        return Card(
-          color: const Color(0xFF121D2E),
+        return Material(
+          color: _card,
+          borderRadius: BorderRadius.circular(12),
           clipBehavior: Clip.antiAlias,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
+          child: InkWell(
+            onTap: () => _play(
+              channel,
+              queue: items,
+              index: index,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
-                  child: InkWell(
-                    onTap: () => _play(
-                      channel,
-                      queue: items,
-                      index: index,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          channel.name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Container(
+                        color: const Color(0xFF182438),
+                        child: _buildArtwork(
+                          channel.logo,
+                          isMovie: isMovie,
+                        ),
+                      ),
+                      if (!isMovie)
+                        Positioned(
+                          left: 8,
+                          top: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.7),
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(
+                                  Icons.circle,
+                                  color: Color(0xFF40D9C4),
+                                  size: 6,
+                                ),
+                                SizedBox(width: 5),
+                                Text(
+                                  'LIVE',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          channel.group,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 11,
+                      Positioned(
+                        right: 5,
+                        top: 4,
+                        child: IconButton(
+                          visualDensity: VisualDensity.compact,
+                          tooltip: favorite
+                              ? 'Remove favorite'
+                              : 'Add favorite',
+                          onPressed: () => _toggleFavorite(channel),
+                          icon: Icon(
+                            favorite ? Icons.star : Icons.star_border,
+                            color: favorite ? _mint : Colors.white70,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                      Center(
+                        child: Icon(
+                          Icons.play_circle_fill,
+                          color: Colors.white.withOpacity(0.85),
+                          size: 35,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    IconButton(
-                      tooltip: favorite
-                          ? 'Remove favorite'
-                          : 'Add favorite',
-                      onPressed: () => _toggleFavorite(channel),
-                      icon: Icon(
-                        favorite ? Icons.star : Icons.star_border,
-                        color: favorite
-                            ? const Color(0xFF40D9C4)
-                            : Colors.white54,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              channel.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              channel.group,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      tooltip: 'Play',
-                      onPressed: () => _play(
-                        channel,
-                        queue: items,
-                        index: index,
+                      const SizedBox(width: 5),
+                      const Icon(
+                        Icons.play_arrow,
+                        color: _mint,
+                        size: 20,
                       ),
-                      icon: const Icon(Icons.play_arrow),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildArtwork(
+    String? url, {
+    required bool isMovie,
+  }) {
+    if (url == null || url.trim().isEmpty) {
+      return Center(
+        child: Icon(
+          isMovie ? Icons.movie_outlined : Icons.live_tv,
+          size: 42,
+          color: Colors.white24,
+        ),
+      );
+    }
+
+    return Image.network(
+      url,
+      fit: isMovie ? BoxFit.cover : BoxFit.contain,
+      errorBuilder: (context, error, stackTrace) {
+        return Center(
+          child: Icon(
+            isMovie ? Icons.movie_outlined : Icons.live_tv,
+            size: 42,
+            color: Colors.white24,
+          ),
+        );
+      },
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+
+        return const Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: _mint,
             ),
           ),
         );
@@ -944,35 +1286,88 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildSeries() {
     if (_series.isEmpty) return _emptyState();
 
-    return GridView.builder(
-      gridDelegate:
-          const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 245,
-        mainAxisExtent: 110,
-        crossAxisSpacing: 13,
-        mainAxisSpacing: 13,
-      ),
-      itemCount: _series.length,
-      itemBuilder: (context, index) {
-        final item = _series[index];
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: GridView.builder(
+        gridDelegate:
+            const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 220,
+          mainAxisExtent: 225,
+          crossAxisSpacing: 15,
+          mainAxisSpacing: 15,
+        ),
+        itemCount: _series.length,
+        itemBuilder: (context, index) {
+          final item = _series[index];
 
-        return Card(
-          color: const Color(0xFF121D2E),
-          child: ListTile(
-            leading: const Icon(
-              Icons.video_library,
-              color: Color(0xFF40D9C4),
+          final cover = item['cover']?.toString();
+
+          return Material(
+            color: _card,
+            borderRadius: BorderRadius.circular(12),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => _openSeries(item),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: cover == null || cover.isEmpty
+                        ? const ColoredBox(
+                            color: Color(0xFF182438),
+                            child: Center(
+                              child: Icon(
+                                Icons.video_library,
+                                size: 48,
+                                color: Colors.white24,
+                              ),
+                            ),
+                          )
+                        : Image.network(
+                            cover,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) {
+                              return const ColoredBox(
+                                color: Color(0xFF182438),
+                                child: Center(
+                                  child: Icon(
+                                    Icons.video_library,
+                                    size: 48,
+                                    color: Colors.white24,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(11),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item['name']?.toString() ?? 'Series',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.play_circle_outline,
+                          color: _mint,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            title: Text(
-              item['name']?.toString() ?? 'Series',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: const Text('Open episodes'),
-            onTap: () => _openSeries(item),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -983,24 +1378,32 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           const Icon(
             Icons.live_tv,
-            size: 66,
-            color: Color(0xFF40D9C4),
+            size: 65,
+            color: _mint,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 17),
           const Text(
             'Your screen. Your channels.',
             style: TextStyle(
-              fontSize: 22,
+              fontSize: 21,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 7),
+          const SizedBox(height: 8),
           const Text(
             'Add your own M3U playlist or Xtream Codes subscription.',
-            style: TextStyle(color: Colors.white54),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 12,
+            ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 19),
           FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: _mint,
+              foregroundColor: const Color(0xFF07131B),
+            ),
             onPressed: _addXtream,
             icon: const Icon(Icons.add),
             label: const Text('Connect subscription'),

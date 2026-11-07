@@ -8,7 +8,6 @@ import '../services/account_storage.dart';
 import '../services/library_storage.dart';
 import '../services/m3u_parser.dart';
 import '../services/xtream_service.dart';
-import 'movie_details_screen.dart';
 import 'player_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -301,8 +300,6 @@ class _HomeScreenState extends State<HomeScreen> {
           url: _streamUrl(account, 'movie', id, extension),
           logo: e['stream_icon']?.toString(),
           group: categoryNames[categoryId] ?? 'Other',
-          year: e['year']?.toString(),
-          rating: e['rating']?.toString(),
         );
       }).toList();
 
@@ -321,6 +318,403 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       service.close();
     }
+  }
+
+  // فتح تفاصيل الفيلم وتحميل بياناته من Xtream.
+  Future<void> _openMovie(
+    Channel movie, {
+    required List<Channel> queue,
+    required int index,
+  }) async {
+    final account = _account;
+
+    if (account == null || movie.id == null) {
+      _notice('Movie details are not available.');
+      return;
+    }
+
+    final service = XtreamService();
+
+    try {
+      final detailsFuture = service.vodInfo(account, movie.id!);
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) {
+          return FutureBuilder<Map<String, dynamic>>(
+            future: detailsFuture,
+            builder: (context, snapshot) {
+              final loading =
+                  snapshot.connectionState == ConnectionState.waiting;
+
+              final details = snapshot.data ?? {};
+              final info = details['info'] is Map
+                  ? Map<String, dynamic>.from(details['info'])
+                  : <String, dynamic>{};
+
+              final movieData = details['movie_data'] is Map
+                  ? Map<String, dynamic>.from(details['movie_data'])
+                  : <String, dynamic>{};
+
+              final name = _firstValue([
+                info['name'],
+                movieData['name'],
+                movie.name,
+              ]);
+
+              final plot = _firstValue([
+                info['plot'],
+                info['description'],
+                movieData['plot'],
+              ]);
+
+              final genre = _firstValue([
+                info['genre'],
+                movieData['genre'],
+              ]);
+
+              final year = _firstValue([
+                info['releasedate'],
+                info['release_date'],
+                info['year'],
+                movieData['year'],
+              ]);
+
+              final rating = _firstValue([
+                info['rating'],
+                info['rating_5based'],
+                movieData['rating'],
+              ]);
+
+              final duration = _firstValue([
+                info['duration'],
+                info['duration_secs'],
+              ]);
+
+              final director = _firstValue([
+                info['director'],
+                movieData['director'],
+              ]);
+
+              final cast = _firstValue([
+                info['cast'],
+                movieData['cast'],
+              ]);
+
+              final poster = _firstValue([
+                info['movie_image'],
+                info['cover'],
+                movie.logo,
+              ]);
+
+              return Dialog(
+                backgroundColor: _card,
+                insetPadding: const EdgeInsets.all(24),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: SizedBox(
+                  width: 760,
+                  child: loading
+                      ? const SizedBox(
+                          height: 300,
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: _mint,
+                            ),
+                          ),
+                        )
+                      : _movieDetailsContent(
+                          context: dialogContext,
+                          movie: movie,
+                          name: name,
+                          poster: poster,
+                          plot: plot,
+                          genre: genre,
+                          year: year,
+                          rating: rating,
+                          duration: duration,
+                          director: director,
+                          cast: cast,
+                          hasError: snapshot.hasError,
+                          onPlay: () {
+                            Navigator.pop(dialogContext);
+                            _play(
+                              movie,
+                              queue: queue,
+                              index: index,
+                            );
+                          },
+                        ),
+                ),
+              );
+            },
+          );
+        },
+      );
+    } catch (_) {
+      _notice('Could not load movie details.');
+    } finally {
+      service.close();
+    }
+  }
+
+  String _firstValue(List<dynamic> values) {
+    for (final value in values) {
+      if (value == null) continue;
+
+      final text = value.toString().trim();
+
+      if (text.isNotEmpty &&
+          text.toLowerCase() != 'null' &&
+          text != '0' &&
+          text != '0.0') {
+        return text;
+      }
+    }
+
+    return '';
+  }
+
+  Widget _movieDetailsContent({
+    required BuildContext context,
+    required Channel movie,
+    required String name,
+    required String poster,
+    required String plot,
+    required String genre,
+    required String year,
+    required String rating,
+    required String duration,
+    required String director,
+    required String cast,
+    required bool hasError,
+    required VoidCallback onPlay,
+  }) {
+    final validPoster = poster.startsWith('http://') ||
+        poster.startsWith('https://');
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(18),
+            ),
+            child: SizedBox(
+              height: 270,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (validPoster)
+                    Image.network(
+                      poster,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          _moviePosterFallback(),
+                    )
+                  else
+                    _moviePosterFallback(),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.05),
+                          Colors.black.withValues(alpha: 0.85),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: IconButton.filled(
+                      style: IconButton.styleFrom(
+                        backgroundColor:
+                            Colors.black.withValues(alpha: 0.65),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                  Positioned(
+                    left: 22,
+                    right: 22,
+                    bottom: 20,
+                    child: Text(
+                      name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 25,
+                        fontWeight: FontWeight.w900,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black,
+                            blurRadius: 12,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 9,
+                  runSpacing: 9,
+                  children: [
+                    if (year.isNotEmpty)
+                      _detailChip(Icons.calendar_today, year),
+                    if (rating.isNotEmpty)
+                      _detailChip(Icons.star_rounded, rating),
+                    if (genre.isNotEmpty)
+                      _detailChip(Icons.category_outlined, genre),
+                    if (duration.isNotEmpty)
+                      _detailChip(Icons.schedule, duration),
+                  ],
+                ),
+                if (plot.isNotEmpty) ...[
+                  const SizedBox(height: 22),
+                  const Text(
+                    'OVERVIEW',
+                    style: TextStyle(
+                      color: _mint,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  Text(
+                    plot,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      height: 1.6,
+                    ),
+                  ),
+                ],
+                if (director.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _detailText('Director', director),
+                ],
+                if (cast.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _detailText('Cast', cast),
+                ],
+                if (hasError) ...[
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Some movie information could not be loaded. '
+                    'You can still try playing the movie.',
+                    style: TextStyle(
+                      color: Colors.white54,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: onPlay,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _mint,
+                      foregroundColor: const Color(0xFF07131B),
+                    ),
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text(
+                      'Play Movie',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailChip(IconData icon, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 11,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1B2A3D),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: _mint, size: 15),
+          const SizedBox(width: 7),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Colors.white70,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailText(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            color: _mint,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _moviePosterFallback() {
+    return Container(
+      color: const Color(0xFF1A293D),
+      child: const Center(
+        child: Icon(
+          Icons.movie_outlined,
+          color: _mint,
+          size: 65,
+        ),
+      ),
+    );
   }
 
   Future<void> _loadSeries() async {
@@ -449,55 +843,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _notice('Could not load series episodes.');
     } finally {
       service.close();
-    }
-  }
-
-  Future<void> _openMovie(
-    Channel channel, {
-    List<Channel>? queue,
-  }) async {
-    final account = _account;
-
-    if (account == null) {
-      _notice('Connect an Xtream account to view movie details.');
-      return;
-    }
-
-    final movieQueue = (queue ?? [channel])
-        .where((item) => item.contentType == 'movie')
-        .toList();
-
-    final safeQueue = movieQueue.isEmpty
-        ? [channel]
-        : movieQueue;
-
-    final movieIndex = safeQueue.indexWhere(
-      (item) => item.uniqueKey == channel.uniqueKey,
-    );
-
-    final startIndex = movieIndex < 0 ? 0 : movieIndex;
-
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (detailsContext) => MovieDetailsScreen(
-          account: account,
-          channel: channel,
-          onPlay: () {
-            Navigator.pop(detailsContext);
-
-            _play(
-              channel,
-              queue: safeQueue,
-              index: startIndex,
-            );
-          },
-        ),
-      ),
-    );
-
-    if (mounted) {
-      setState(() {});
     }
   }
 
@@ -788,8 +1133,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         : _section == 'Series'
                             ? _buildSeries()
                             : Row(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   if (currentItems.isNotEmpty)
                                     _buildCategorySidebar(groups),
@@ -798,7 +1142,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Expanded(
                                     child: filteredItems.isEmpty
                                         ? _emptyState()
-                                        : _buildGrid(filteredItems),
+                                        : _section == 'Movies'
+                                            ? _buildMovies(filteredItems)
+                                            : _buildGrid(filteredItems),
                                   ),
                                 ],
                               ),
@@ -1264,6 +1610,141 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // شبكة الأفلام: الضغط على الفيلم يفتح التفاصيل بدل التشغيل المباشر.
+  Widget _buildMovies(List<Channel> items) {
+    return GridView.builder(
+      padding: const EdgeInsets.only(bottom: 10),
+      gridDelegate:
+          const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 220,
+        mainAxisExtent: 330,
+        crossAxisSpacing: 15,
+        mainAxisSpacing: 15,
+      ),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final movie = items[index];
+        final favorite = _favorites.contains(movie.uniqueKey);
+
+        return Material(
+          color: _card,
+          borderRadius: BorderRadius.circular(13),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => _openMovie(
+              movie,
+              queue: items,
+              index: index,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (movie.logo != null &&
+                          movie.logo!.startsWith('http'))
+                        Image.network(
+                          movie.logo!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              _moviePosterFallback(),
+                        )
+                      else
+                        _moviePosterFallback(),
+                      Positioned(
+                        top: 9,
+                        right: 9,
+                        child: IconButton(
+                          visualDensity: VisualDensity.compact,
+                          style: IconButton.styleFrom(
+                            backgroundColor:
+                                Colors.black.withValues(alpha: 0.65),
+                          ),
+                          onPressed: () => _toggleFavorite(movie),
+                          icon: Icon(
+                            favorite
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
+                            color: favorite ? _mint : Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 10,
+                        right: 10,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: _mint,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.info_outline_rounded,
+                            color: Color(0xFF07131B),
+                            size: 19,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 11, 12, 13),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        movie.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        movie.group,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _muted,
+                          fontSize: 10,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 14,
+                            color: _mint,
+                          ),
+                          SizedBox(width: 5),
+                          Text(
+                            'View details',
+                            style: TextStyle(
+                              color: _mint,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildGrid(List<Channel> items) {
     return GridView.builder(
       padding: const EdgeInsets.only(bottom: 10),
@@ -1278,27 +1759,17 @@ class _HomeScreenState extends State<HomeScreen> {
       itemBuilder: (context, index) {
         final channel = items[index];
         final favorite = _favorites.contains(channel.uniqueKey);
-        final isMovie = channel.contentType == 'movie';
 
         return Material(
           color: _card,
           borderRadius: BorderRadius.circular(12),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            onTap: () {
-              if (isMovie) {
-                _openMovie(
-                  channel,
-                  queue: items,
-                );
-              } else {
-                _play(
-                  channel,
-                  queue: items,
-                  index: index,
-                );
-              }
-            },
+            onTap: () => _play(
+              channel,
+              queue: items,
+              index: index,
+            ),
             child: Padding(
               padding: const EdgeInsets.all(11),
               child: Row(
@@ -1329,24 +1800,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             fontSize: 10,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.circle,
-                              color: _mint,
-                              size: 6,
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              isMovie ? 'Movie' : 'Available',
-                              style: const TextStyle(
-                                color: _mint,
-                                fontSize: 9,
-                              ),
-                            ),
-                          ],
-                        ),
                       ],
                     ),
                   ),
@@ -1375,10 +1828,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: _mint.withValues(alpha: 0.13),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(
-                          isMovie
-                              ? Icons.info_outline_rounded
-                              : Icons.play_arrow_rounded,
+                        child: const Icon(
+                          Icons.play_arrow_rounded,
                           color: _mint,
                           size: 21,
                         ),

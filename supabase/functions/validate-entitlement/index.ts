@@ -25,6 +25,7 @@ Deno.serve(async (req: Request) => {
       .select("id, license_id")
       .eq("device_id_hash", deviceHash)
       .is("deactivated_at", null)
+      .limit(1)
       .maybeSingle();
 
     if (error) {

@@ -24,7 +24,6 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen> {
   late final Player _player;
   late final VideoController _controller;
-
   late int _currentIndex;
 
   String? _error;
@@ -49,7 +48,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     _currentIndex = widget.playlist.isEmpty
         ? 0
-        : widget.initialIndex.clamp(0, widget.playlist.length - 1);
+        : widget.initialIndex
+            .clamp(0, widget.playlist.length - 1)
+            .toInt();
 
     _player = Player();
     _controller = VideoController(_player);
@@ -67,6 +68,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _start() async {
+    if (!mounted) return;
+
     setState(() {
       _error = null;
       _loading = true;
@@ -206,17 +209,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
             stream: _player.stream.position,
             initialData: Duration.zero,
             builder: (context, positionSnapshot) {
-              final position = positionSnapshot.data ?? Duration.zero;
+              final position =
+                  positionSnapshot.data ?? Duration.zero;
 
               return StreamBuilder<Duration>(
                 stream: _player.stream.duration,
                 initialData: Duration.zero,
                 builder: (context, durationSnapshot) {
-                  final duration = durationSnapshot.data ?? Duration.zero;
-                  final max = duration.inMilliseconds.toDouble();
+                  final duration =
+                      durationSnapshot.data ?? Duration.zero;
+
+                  final max =
+                      duration.inMilliseconds.toDouble();
+
                   final current = position.inMilliseconds
                       .toDouble()
-                      .clamp(0.0, max > 0 ? max : 1.0);
+                      .clamp(0.0, max > 0 ? max : 1.0)
+                      .toDouble();
 
                   return Column(
                     children: [
@@ -229,12 +238,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             ? null
                             : (value) {
                                 _player.seek(
-                                  Duration(milliseconds: value.toInt()),
+                                  Duration(
+                                    milliseconds: value.toInt(),
+                                  ),
                                 );
                               },
                       ),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        mainAxisAlignment:
+                            MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
                             _formatTime(position),
@@ -301,7 +313,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   initialData: 100,
                   builder: (context, snapshot) {
                     final volume = (snapshot.data ?? 100)
-                        .clamp(0.0, 100.0);
+                        .clamp(0.0, 100.0)
+                        .toDouble();
 
                     return Slider(
                       value: volume,
@@ -316,7 +329,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               ),
               IconButton(
-                tooltip: _fullscreen ? 'Exit fullscreen' : 'Fullscreen',
+                tooltip: _fullscreen
+                    ? 'Exit fullscreen'
+                    : 'Fullscreen',
                 onPressed: () {
                   setState(() => _fullscreen = !_fullscreen);
                 },

@@ -1,4 +1,3 @@
-
 class Channel {
   const Channel({
     required this.name,
@@ -10,6 +9,14 @@ class Channel {
     this.categoryId,
     this.extension,
     this.contentType = 'live',
+    this.year,
+    this.rating,
+    this.plot,
+    this.cast,
+    this.director,
+    this.genre,
+    this.duration,
+    this.backdrop,
   });
 
   final String name;
@@ -24,6 +31,16 @@ class Channel {
 
   // live, movie, episode, or m3u
   final String contentType;
+
+  // Additional movie and series information
+  final String? year;
+  final String? rating;
+  final String? plot;
+  final String? cast;
+  final String? director;
+  final String? genre;
+  final String? duration;
+  final String? backdrop;
 
   String get uniqueKey {
     if (id != null && id!.isNotEmpty) {

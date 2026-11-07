@@ -29,6 +29,10 @@ jobs:
         working-directory: nova_iptv_windows
         run: flutter pub get
 
+      - name: Analyze Project
+        working-directory: nova_iptv_windows
+        run: flutter analyze
+
       - name: Build NOVA IPTV
         working-directory: nova_iptv_windows
         run: flutter build windows --release

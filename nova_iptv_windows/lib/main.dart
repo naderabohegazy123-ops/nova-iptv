@@ -4,9 +4,7 @@ import 'screens/home_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
   MediaKit.ensureInitialized();
-
   runApp(const NovaApp());
 }
 

@@ -1,6 +1,8 @@
 
 import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import '../models/xtream_account.dart';
 
 class AccountStorage {
@@ -23,23 +25,37 @@ class AccountStorage {
   }
 
   Future<XtreamAccount?> read() async {
-    final value = await _storage.read(key: _accountKey);
+    try {
+      final value = await _storage.read(key: _accountKey);
 
-    if (value == null || value.isEmpty) {
+      if (value == null || value.isEmpty) {
+        return null;
+      }
+
+      final data = jsonDecode(value);
+
+      if (data is! Map<String, dynamic>) {
+        return null;
+      }
+
+      final server = data['server']?.toString() ?? '';
+      final username = data['username']?.toString() ?? '';
+      final password = data['password']?.toString() ?? '';
+
+      if (server.isEmpty ||
+          username.isEmpty ||
+          password.isEmpty) {
+        return null;
+      }
+
+      return XtreamAccount(
+        server: server,
+        username: username,
+        password: password,
+      );
+    } catch (_) {
       return null;
     }
-
-    final data = jsonDecode(value);
-
-    if (data is! Map<String, dynamic>) {
-      return null;
-    }
-
-    return XtreamAccount(
-      server: data['server']?.toString() ?? '',
-      username: data['username']?.toString() ?? '',
-      password: data['password']?.toString() ?? '',
-    );
   }
 
   Future<void> delete() async {

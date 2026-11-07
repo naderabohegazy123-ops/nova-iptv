@@ -1,7 +1,10 @@
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/channel.dart';
 
@@ -29,6 +32,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String? _error;
   bool _loading = true;
   bool _fullscreen = false;
+  bool _savingProgress = false;
+  StreamSubscription<Duration>? _positionSubscription;
+  Duration _latestPosition = Duration.zero;
+  int _lastPersistedSecond = 0;
 
   Channel get _currentChannel {
     if (widget.playlist.isEmpty) return widget.channel;
@@ -64,7 +71,81 @@ class _PlayerScreenState extends State<PlayerScreen> {
       });
     });
 
+    _positionSubscription = _player.stream.position.listen((position) {
+      _latestPosition = position;
+      if (!_supportsResume || position.inSeconds < 5) return;
+      if ((position.inSeconds - _lastPersistedSecond).abs() >= 5) {
+        _saveProgress(position);
+      }
+    });
+
     _start();
+  }
+
+  bool get _supportsResume =>
+      _currentChannel.contentType == 'movie' ||
+      _currentChannel.contentType == 'episode';
+
+  String get _resumeKey {
+    var hash = 0x811c9dc5;
+    for (final codeUnit in _currentChannel.url.codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    return 'nova_resume_${_currentChannel.contentType}_${hash.toRadixString(16)}';
+  }
+
+  Future<void> _saveProgress([Duration? position]) async {
+    if (!_supportsResume || _savingProgress) return;
+    final value = position ?? _latestPosition;
+    if (value.inSeconds < 5) return;
+
+    _savingProgress = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_resumeKey, value.inMilliseconds);
+      _lastPersistedSecond = value.inSeconds;
+    } catch (_) {
+      // Keep playback running if local progress cannot be saved.
+    } finally {
+      _savingProgress = false;
+    }
+  }
+
+  Future<void> _restoreProgress() async {
+    if (!_supportsResume) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedMilliseconds = prefs.getInt(_resumeKey) ?? 0;
+      if (savedMilliseconds < 10000) return;
+
+      final duration = await _player.stream.duration
+          .firstWhere((value) => value > Duration.zero)
+          .timeout(const Duration(seconds: 8));
+
+      final saved = Duration(milliseconds: savedMilliseconds);
+      if (saved >= duration - const Duration(seconds: 30)) {
+        await prefs.remove(_resumeKey);
+        return;
+      }
+
+      await _player.seek(saved);
+      _latestPosition = saved;
+      _lastPersistedSecond = saved.inSeconds;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Resumed from ${_formatTime(saved)}'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (_) {
+      // Streams without a known duration start from the beginning.
+    }
   }
 
   Future<void> _start() async {
@@ -75,11 +156,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _loading = true;
     });
 
+    _latestPosition = Duration.zero;
+    _lastPersistedSecond = 0;
+
     try {
       await _player.open(
         Media(_currentChannel.url),
         play: true,
       );
+
+      await _restoreProgress();
 
       if (mounted) {
         setState(() => _loading = false);
@@ -97,6 +183,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _next() async {
     if (!_hasNext) return;
 
+    await _saveProgress();
     setState(() => _currentIndex++);
     await _start();
   }
@@ -104,6 +191,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _previous() async {
     if (!_hasPrevious) return;
 
+    await _saveProgress();
     setState(() => _currentIndex--);
     await _start();
   }
@@ -122,6 +210,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
+    _saveProgress();
+    _positionSubscription?.cancel();
     _player.dispose();
     super.dispose();
   }

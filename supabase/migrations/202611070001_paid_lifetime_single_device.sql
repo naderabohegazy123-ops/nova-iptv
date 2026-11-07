@@ -52,10 +52,18 @@ begin
     return jsonb_build_object('success', false, 'error', 'تم استخدام هذا المفتاح على جهاز آخر');
   end if;
 
-  insert into public.license_devices
-    (license_id, device_id_hash, activated_at, last_validated_at, deactivated_at)
-  values
-    (v_license.id, p_device_id_hash, now(), now(), null);
+  if v_device.id is not null then
+    update public.license_devices
+      set activated_at = now(),
+          last_validated_at = now(),
+          deactivated_at = null
+      where id = v_device.id;
+  else
+    insert into public.license_devices
+      (license_id, device_id_hash, activated_at, last_validated_at, deactivated_at)
+    values
+      (v_license.id, p_device_id_hash, now(), now(), null);
+  end if;
 
   return jsonb_build_object('success', true, 'activated', true, 'entitled', true);
 end;

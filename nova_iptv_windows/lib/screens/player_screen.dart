@@ -76,7 +76,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _latestPosition = position;
       if (!_supportsResume || position.inSeconds < 5) return;
       if ((position.inSeconds - _lastPersistedSecond).abs() >= 5) {
-        _saveProgress(position);
+        unawaited(_saveProgress(position));
       }
     });
 
@@ -211,11 +211,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
-    _saveProgress();
+    unawaited(_saveProgress());
     if (_fullscreen) {
-      windowManager.setFullScreen(false);
+      unawaited(windowManager.setFullScreen(false));
     }
-    _positionSubscription?.cancel();
+    unawaited(_positionSubscription?.cancel() ?? Future<void>.value());
     _player.dispose();
     super.dispose();
   }

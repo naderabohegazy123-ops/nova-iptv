@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -22,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color _sidebar = Color(0xFF0D1524);
   static const Color _card = Color(0xFF121D2E);
   static const Color _mint = Color(0xFF40D9C4);
+  static const Color _muted = Color(0xFF8995A8);
 
   final _search = TextEditingController();
   final _server = TextEditingController();
@@ -50,16 +50,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _initialize();
-  }
-
-  @override
-  void dispose() {
-    _search.dispose();
-    _server.dispose();
-    _username.dispose();
-    _password.dispose();
-    _playlist.dispose();
-    super.dispose();
   }
 
   Future<void> _initialize() async {
@@ -92,6 +82,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _search.dispose();
+    _server.dispose();
+    _username.dispose();
+    _password.dispose();
+    _playlist.dispose();
+    super.dispose();
+  }
+
   void _notice(String message) {
     if (!mounted) return;
 
@@ -99,6 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF202C3E),
       ),
     );
   }
@@ -261,7 +262,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (account == null || _movies.isNotEmpty) return;
 
-    setState(() => _busy = true);
+    if (mounted) {
+      setState(() => _busy = true);
+    }
 
     final service = XtreamService();
 
@@ -321,7 +324,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (account == null || _series.isNotEmpty) return;
 
-    setState(() => _busy = true);
+    if (mounted) {
+      setState(() => _busy = true);
+    }
 
     final service = XtreamService();
 
@@ -374,8 +379,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
 
       final episodeChannels = allEpisodes
-          .where((e) =>
-              e['id'] != null || e['episode_id'] != null)
+          .where((e) => e['id'] != null || e['episode_id'] != null)
           .map((episode) {
         final id =
             (episode['id'] ?? episode['episode_id']).toString();
@@ -660,16 +664,14 @@ class _HomeScreenState extends State<HomeScreen> {
         return _movies;
 
       case 'Favorites':
-        return [
-          ..._channels,
-          ..._movies,
-        ].where((c) => _favorites.contains(c.uniqueKey)).toList();
+        return [..._channels, ..._movies]
+            .where((c) => _favorites.contains(c.uniqueKey))
+            .toList();
 
       case 'Recently played':
-        final items = [
-          ..._channels,
-          ..._movies,
-        ].where((c) => _history.contains(c.uniqueKey)).toList();
+        final items = [..._channels, ..._movies]
+            .where((c) => _history.contains(c.uniqueKey))
+            .toList();
 
         items.sort(
           (a, b) => _history
@@ -684,9 +686,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  List<Channel> _filteredItems() {
-    final items = _currentItems();
-    final query = _search.text.toLowerCase();
+  List<Channel> _filteredItems(List<Channel> items) {
+    final query = _search.text.trim().toLowerCase();
 
     return items.where((channel) {
       final matchesGroup =
@@ -699,21 +700,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList();
   }
 
-  List<String> _groups() {
-    final groups = _currentItems()
-        .map((channel) => channel.group)
-        .toSet()
-        .toList();
-
-    groups.sort();
-
-    return groups;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final items = _filteredItems();
-    final groups = _groups();
+    final currentItems = _currentItems();
+    final filteredItems = _filteredItems(currentItems);
+
+    final groups = currentItems.map((c) => c.group).toSet().toList()
+      ..sort();
 
     return Scaffold(
       backgroundColor: _background,
@@ -721,24 +714,43 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           _buildMainSidebar(),
           Expanded(
-            child: Column(
-              children: [
-                _buildTopBar(),
-                Expanded(
-                  child: _busy
-                      ? const Center(
-                          child: CircularProgressIndicator(
-                            color: _mint,
-                          ),
-                        )
-                      : _section == 'Series'
-                          ? _buildSeries()
-                          : _buildLibrary(
-                              items,
-                              groups,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 25, 28, 22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeader(),
+                  const SizedBox(height: 25),
+                  if (_section != 'Series') ...[
+                    _buildSearchBar(filteredItems.length),
+                    const SizedBox(height: 20),
+                  ],
+                  Expanded(
+                    child: _busy
+                        ? const Center(
+                            child: CircularProgressIndicator(
+                              color: _mint,
                             ),
-                ),
-              ],
+                          )
+                        : _section == 'Series'
+                            ? _buildSeries()
+                            : Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (currentItems.isNotEmpty)
+                                    _buildCategorySidebar(groups),
+                                  if (currentItems.isNotEmpty)
+                                    const SizedBox(width: 20),
+                                  Expanded(
+                                    child: filteredItems.isEmpty
+                                        ? _emptyState()
+                                        : _buildGrid(filteredItems),
+                                  ),
+                                ],
+                              ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -747,34 +759,41 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMainSidebar() {
+    final items = [
+      ('Live TV', Icons.live_tv_outlined),
+      ('Movies', Icons.movie_outlined),
+      ('Series', Icons.video_library_outlined),
+      ('Favorites', Icons.star_border_rounded),
+      ('Recently played', Icons.history_rounded),
+    ];
+
     return Container(
       width: 215,
       color: _sidebar,
-      padding: const EdgeInsets.fromLTRB(16, 28, 12, 18),
+      padding: const EdgeInsets.fromLTRB(17, 28, 13, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Row(
             children: [
               Icon(
-                Icons.play_circle_fill,
+                Icons.play_circle_fill_rounded,
                 color: _mint,
-                size: 32,
+                size: 34,
               ),
               SizedBox(width: 9),
               Text(
                 'NOVA',
                 style: TextStyle(
-                  fontSize: 23,
+                  fontSize: 24,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 2,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 3),
           const Padding(
-            padding: EdgeInsets.only(left: 41),
+            padding: EdgeInsets.only(left: 44, top: 1),
             child: Text(
               'IPTV PLAYER',
               style: TextStyle(
@@ -785,42 +804,93 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 38),
-          _navItem('Live TV', Icons.live_tv),
-          _navItem('Movies', Icons.movie_outlined),
-          _navItem('Series', Icons.video_library_outlined),
-          const SizedBox(height: 18),
           const Padding(
-            padding: EdgeInsets.only(left: 13, bottom: 9),
+            padding: EdgeInsets.only(left: 12, bottom: 12),
             child: Text(
-              'MY LIBRARY',
+              'LIBRARY',
               style: TextStyle(
                 color: Colors.white38,
                 fontSize: 10,
-                fontWeight: FontWeight.bold,
                 letterSpacing: 1.5,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
-          _navItem('Favorites', Icons.star_border),
-          _navItem('Recently played', Icons.history),
-          const Spacer(),
-          _navItem('Settings', Icons.settings_outlined),
-          const SizedBox(height: 12),
-          const Divider(color: Colors.white12),
-          const SizedBox(height: 8),
-          const Text(
-            'NOVA IPTV',
-            style: TextStyle(
-              color: Colors.white30,
-              fontSize: 10,
+          for (final item in items)
+            _navigationItem(item.$1, item.$2),
+          const SizedBox(height: 24),
+          const Padding(
+            padding: EdgeInsets.only(left: 12, bottom: 12),
+            child: Text(
+              'PREFERENCES',
+              style: TextStyle(
+                color: Colors.white38,
+                fontSize: 10,
+                letterSpacing: 1.5,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Windows Edition • v0.3',
-            style: TextStyle(
-              color: Colors.white24,
-              fontSize: 9,
+          _navigationItem(
+            'Settings',
+            Icons.settings_outlined,
+            onTap: _settings,
+          ),
+          const Spacer(),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF142438),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.05),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(
+                      Icons.circle,
+                      size: 8,
+                      color: _mint,
+                    ),
+                    SizedBox(width: 7),
+                    Text(
+                      'NOVA PLAYER',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.white70,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  _account != null
+                      ? 'Xtream connected'
+                      : _channels.isNotEmpty
+                          ? 'M3U playlist loaded'
+                          : 'No playlist connected',
+                  style: const TextStyle(
+                    color: _muted,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 15),
+          const Center(
+            child: Text(
+              'NOVA IPTV  •  v0.3',
+              style: TextStyle(
+                color: Colors.white30,
+                fontSize: 10,
+              ),
             ),
           ),
         ],
@@ -828,7 +898,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _navItem(String title, IconData icon) {
+  Widget _navigationItem(
+    String title,
+    IconData icon, {
+    VoidCallback? onTap,
+  }) {
     final selected = _section == title;
 
     return Padding(
@@ -840,16 +914,10 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(9),
         child: InkWell(
           borderRadius: BorderRadius.circular(9),
-          onTap: () {
-            if (title == 'Settings') {
-              _settings();
-            } else {
-              _openSection(title);
-            }
-          },
+          onTap: onTap ?? () => _openSection(title),
           child: Padding(
             padding: const EdgeInsets.symmetric(
-              horizontal: 12,
+              horizontal: 11,
               vertical: 12,
             ),
             child: Row(
@@ -857,20 +925,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 Icon(
                   icon,
                   size: 19,
-                  color: selected ? _mint : Colors.white60,
+                  color: selected ? _mint : _muted,
                 ),
                 const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight:
-                          selected ? FontWeight.bold : FontWeight.normal,
-                      color: selected ? Colors.white : Colors.white70,
-                    ),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: selected ? Colors.white : _muted,
+                    fontSize: 12,
+                    fontWeight:
+                        selected ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
+                const Spacer(),
                 if (selected)
                   Container(
                     width: 5,
@@ -888,157 +955,193 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTopBar() {
-    return Container(
-      height: 88,
-      padding: const EdgeInsets.symmetric(horizontal: 27),
-      decoration: const BoxDecoration(
-        color: _background,
-        border: Border(
-          bottom: BorderSide(color: Colors.white10),
-        ),
-      ),
-      child: Row(
-        children: [
-          Text(
-            _section,
-            style: const TextStyle(
-              fontSize: 25,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 9,
-              vertical: 5,
-            ),
-            decoration: BoxDecoration(
-              color: const Color(0xFF19333A),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              _section == 'Series'
-                  ? '${_series.length} series'
-                  : '${_currentItems().length} items',
+  Widget _buildHeader() {
+    return Row(
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _section,
               style: const TextStyle(
-                color: _mint,
-                fontSize: 10,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
               ),
             ),
-          ),
-          const Spacer(),
-          OutlinedButton.icon(
-            onPressed: _addM3u,
-            icon: const Icon(Icons.link, size: 17),
-            label: const Text('Add M3U'),
-          ),
-          const SizedBox(width: 9),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-              backgroundColor: _mint,
-              foregroundColor: const Color(0xFF07131B),
+            const SizedBox(height: 5),
+            Text(
+              _section == 'Live TV'
+                  ? 'Browse and watch your live channels'
+                  : _section == 'Movies'
+                      ? 'Your movie collection'
+                      : _section == 'Series'
+                          ? 'Explore your favorite series'
+                          : _section == 'Favorites'
+                              ? 'Your saved favorites'
+                              : 'Continue watching',
+              style: const TextStyle(
+                color: _muted,
+                fontSize: 12,
+              ),
             ),
-            onPressed: _addXtream,
-            icon: const Icon(Icons.add, size: 17),
-            label: const Text('Add Xtream'),
+          ],
+        ),
+        const Spacer(),
+        OutlinedButton.icon(
+          onPressed: _addM3u,
+          icon: const Icon(Icons.link_rounded, size: 18),
+          label: const Text('Add M3U'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white70,
+            side: const BorderSide(color: Color(0xFF344258)),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 15,
+              vertical: 17,
+            ),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 10),
+        FilledButton.icon(
+          onPressed: _addXtream,
+          icon: const Icon(Icons.add_rounded, size: 19),
+          label: const Text('Add Xtream'),
+          style: FilledButton.styleFrom(
+            backgroundColor: _mint,
+            foregroundColor: const Color(0xFF07131B),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 17,
+              vertical: 17,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildLibrary(
-    List<Channel> items,
-    List<String> groups,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: 43,
-                  child: TextField(
-                    controller: _search,
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      hintText: 'Search ${_section.toLowerCase()}...',
-                      prefixIcon: const Icon(Icons.search, size: 19),
-                      filled: true,
-                      fillColor: _card,
-                      contentPadding: EdgeInsets.zero,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(9),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
+  Widget _buildSearchBar(int count) {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 46,
+            decoration: BoxDecoration(
+              color: _card,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.06),
+              ),
+            ),
+            child: TextField(
+              controller: _search,
+              onChanged: (_) => setState(() {}),
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Search channels, movies...',
+                hintStyle: const TextStyle(
+                  color: Colors.white38,
+                  fontSize: 12,
+                ),
+                prefixIcon: const Icon(
+                  Icons.search_rounded,
+                  color: _muted,
+                  size: 20,
+                ),
+                suffixIcon: _search.text.isNotEmpty
+                    ? IconButton(
+                        onPressed: () {
+                          _search.clear();
+                          setState(() {});
+                        },
+                        icon: const Icon(
+                          Icons.close,
+                          size: 17,
+                          color: _muted,
+                        ),
+                      )
+                    : null,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  vertical: 14,
                 ),
               ),
-              const SizedBox(width: 15),
+            ),
+          ),
+        ),
+        const SizedBox(width: 15),
+        Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: _card,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.grid_view_rounded,
+                size: 16,
+                color: _mint,
+              ),
+              const SizedBox(width: 8),
               Text(
-                '${items.length} results',
+                '$count items',
                 style: const TextStyle(
-                  color: Colors.white54,
+                  color: Colors.white70,
                   fontSize: 12,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 18),
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildCategorySidebar(groups),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: items.isEmpty
-                      ? _emptyState()
-                      : _buildGrid(items),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildCategorySidebar(List<String> groups) {
+    final counts = <String, int>{};
+
+    for (final channel in _currentItems()) {
+      counts[channel.group] = (counts[channel.group] ?? 0) + 1;
+    }
+
     return Container(
-      width: 175,
+      width: 190,
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
       decoration: BoxDecoration(
         color: _sidebar,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.04),
+        ),
       ),
-      padding: const EdgeInsets.all(11),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
-            padding: EdgeInsets.fromLTRB(9, 8, 8, 14),
+            padding: EdgeInsets.fromLTRB(9, 5, 5, 15),
             child: Text(
               'CATEGORIES',
               style: TextStyle(
-                color: Colors.white38,
+                color: Colors.white54,
                 fontSize: 10,
-                fontWeight: FontWeight.bold,
                 letterSpacing: 1.3,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
           Expanded(
             child: ListView(
               children: [
-                _categoryItem('All', Icons.grid_view),
+                _categoryItem(
+                  'All',
+                  _currentItems().length,
+                  Icons.apps_rounded,
+                ),
                 for (final group in groups)
                   _categoryItem(
                     group,
+                    counts[group] ?? 0,
                     Icons.folder_outlined,
                   ),
               ],
@@ -1049,8 +1152,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _categoryItem(String name, IconData icon) {
-    final selected = _filter == name;
+  Widget _categoryItem(
+    String title,
+    int count,
+    IconData icon,
+  ) {
+    final selected = _filter == title;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -1058,34 +1165,41 @@ class _HomeScreenState extends State<HomeScreen> {
         color: selected
             ? const Color(0xFF19333A)
             : Colors.transparent,
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(8),
         child: InkWell(
-          borderRadius: BorderRadius.circular(7),
-          onTap: () => setState(() => _filter = name),
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => setState(() => _filter = title),
           child: Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: 9,
-              vertical: 10,
+              vertical: 11,
             ),
             child: Row(
               children: [
                 Icon(
                   icon,
-                  size: 15,
-                  color: selected ? _mint : Colors.white54,
+                  size: 16,
+                  color: selected ? _mint : _muted,
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 9),
                 Expanded(
                   child: Text(
-                    name,
+                    title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
+                      color: selected ? Colors.white : _muted,
                       fontSize: 11,
-                      color: selected ? Colors.white : Colors.white60,
                       fontWeight:
                           selected ? FontWeight.bold : FontWeight.normal,
                     ),
+                  ),
+                ),
+                Text(
+                  '$count',
+                  style: TextStyle(
+                    color: selected ? _mint : Colors.white38,
+                    fontSize: 10,
                   ),
                 ),
               ],
@@ -1098,11 +1212,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildGrid(List<Channel> items) {
     return GridView.builder(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 10),
       gridDelegate:
           const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 215,
-        mainAxisExtent: 190,
+        maxCrossAxisExtent: 260,
+        mainAxisExtent: 118,
         crossAxisSpacing: 13,
         mainAxisSpacing: 13,
       ),
@@ -1110,7 +1224,6 @@ class _HomeScreenState extends State<HomeScreen> {
       itemBuilder: (context, index) {
         final channel = items[index];
         final favorite = _favorites.contains(channel.uniqueKey);
-        final isMovie = channel.contentType == 'movie';
 
         return Material(
           color: _card,
@@ -1122,112 +1235,203 @@ class _HomeScreenState extends State<HomeScreen> {
               queue: items,
               index: index,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Container(
-                        color: const Color(0xFF182438),
-                        child: _buildArtwork(
-                          channel.logo,
-                          isMovie: isMovie,
-                        ),
-                      ),
-                      if (!isMovie)
-                        Positioned(
-                          left: 8,
-                          top: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.7),
-                              borderRadius: BorderRadius.circular(5),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(
-                                  Icons.circle,
-                                  color: Color(0xFF40D9C4),
-                                  size: 6,
-                                ),
-                                SizedBox(width: 5),
-                                Text(
-                                  'LIVE',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
+            child: Padding(
+              padding: const EdgeInsets.all(11),
+              child: Row(
+                children: [
+                  _channelLogo(channel.logo),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          channel.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      Positioned(
-                        right: 5,
-                        top: 4,
-                        child: IconButton(
-                          visualDensity: VisualDensity.compact,
-                          tooltip: favorite
-                              ? 'Remove favorite'
-                              : 'Add favorite',
-                          onPressed: () => _toggleFavorite(channel),
-                          icon: Icon(
-                            favorite ? Icons.star : Icons.star_border,
-                            color: favorite ? _mint : Colors.white70,
+                        const SizedBox(height: 7),
+                        Text(
+                          channel.group,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: _muted,
+                            fontSize: 10,
                           ),
                         ),
-                      ),
-                      Center(
-                        child: Icon(
-                          Icons.play_circle_fill,
-                          color: Colors.white.withOpacity(0.85),
-                          size: 35,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        const SizedBox(height: 6),
+                        const Row(
                           children: [
-                            Text(
-                              channel.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
+                            Icon(
+                              Icons.circle,
+                              color: _mint,
+                              size: 6,
                             ),
-                            const SizedBox(height: 4),
+                            SizedBox(width: 5),
                             Text(
-                              channel.group,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white54,
-                                fontSize: 10,
+                              'Available',
+                              style: TextStyle(
+                                color: _mint,
+                                fontSize: 9,
                               ),
                             ),
                           ],
                         ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: favorite
+                            ? 'Remove favorite'
+                            : 'Add favorite',
+                        onPressed: () => _toggleFavorite(channel),
+                        icon: Icon(
+                          favorite
+                              ? Icons.star_rounded
+                              : Icons.star_border_rounded,
+                          size: 19,
+                          color: favorite ? _mint : Colors.white38,
+                        ),
                       ),
-                      const SizedBox(width: 5),
-                      const Icon(
-                        Icons.play_arrow,
-                        color: _mint,
-                        size: 20,
+                      Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: _mint.withValues(alpha: 0.13),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow_rounded,
+                          color: _mint,
+                          size: 21,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _channelLogo(String? logo) {
+    final validLogo = logo != null &&
+        logo.trim().isNotEmpty &&
+        (logo.startsWith('http://') || logo.startsWith('https://'));
+
+    return Container(
+      width: 58,
+      height: 68,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A293D),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: validLogo
+          ? Image.network(
+              logo,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => _logoFallback(),
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return _logoFallback();
+              },
+            )
+          : _logoFallback(),
+    );
+  }
+
+  Widget _logoFallback() {
+    return const Center(
+      child: Icon(
+        Icons.live_tv_rounded,
+        color: _mint,
+        size: 27,
+      ),
+    );
+  }
+
+  Widget _buildSeries() {
+    if (_series.isEmpty) return _emptyState();
+
+    return GridView.builder(
+      gridDelegate:
+          const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 250,
+        mainAxisExtent: 285,
+        crossAxisSpacing: 15,
+        mainAxisSpacing: 15,
+      ),
+      itemCount: _series.length,
+      itemBuilder: (context, index) {
+        final item = _series[index];
+        final name = item['name']?.toString() ?? 'Series';
+        final cover = item['cover']?.toString() ?? '';
+
+        return Material(
+          color: _card,
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => _openSeries(item),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: cover.startsWith('http')
+                      ? Image.network(
+                          cover,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              _seriesFallback(),
+                        )
+                      : _seriesFallback(),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.play_circle_outline,
+                            size: 16,
+                            color: _mint,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'Open episodes',
+                            style: TextStyle(
+                              color: _mint,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1240,174 +1444,83 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildArtwork(
-    String? url, {
-    required bool isMovie,
-  }) {
-    if (url == null || url.trim().isEmpty) {
-      return Center(
+  Widget _seriesFallback() {
+    return Container(
+      color: const Color(0xFF1A293D),
+      child: const Center(
         child: Icon(
-          isMovie ? Icons.movie_outlined : Icons.live_tv,
-          size: 42,
-          color: Colors.white24,
+          Icons.video_library_outlined,
+          color: _mint,
+          size: 48,
         ),
-      );
-    }
-
-    return Image.network(
-      url,
-      fit: isMovie ? BoxFit.cover : BoxFit.contain,
-      errorBuilder: (context, error, stackTrace) {
-        return Center(
-          child: Icon(
-            isMovie ? Icons.movie_outlined : Icons.live_tv,
-            size: 42,
-            color: Colors.white24,
-          ),
-        );
-      },
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-
-        return const Center(
-          child: SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: _mint,
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildSeries() {
-    if (_series.isEmpty) return _emptyState();
-
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: GridView.builder(
-        gridDelegate:
-            const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 220,
-          mainAxisExtent: 225,
-          crossAxisSpacing: 15,
-          mainAxisSpacing: 15,
-        ),
-        itemCount: _series.length,
-        itemBuilder: (context, index) {
-          final item = _series[index];
-
-          final cover = item['cover']?.toString();
-
-          return Material(
-            color: _card,
-            borderRadius: BorderRadius.circular(12),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => _openSeries(item),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: cover == null || cover.isEmpty
-                        ? const ColoredBox(
-                            color: Color(0xFF182438),
-                            child: Center(
-                              child: Icon(
-                                Icons.video_library,
-                                size: 48,
-                                color: Colors.white24,
-                              ),
-                            ),
-                          )
-                        : Image.network(
-                            cover,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) {
-                              return const ColoredBox(
-                                color: Color(0xFF182438),
-                                child: Center(
-                                  child: Icon(
-                                    Icons.video_library,
-                                    size: 48,
-                                    color: Colors.white24,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(11),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            item['name']?.toString() ?? 'Series',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const Icon(
-                          Icons.play_circle_outline,
-                          color: _mint,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
       ),
     );
   }
 
   Widget _emptyState() {
+    final noAccount = _account == null && _channels.isEmpty;
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(
-            Icons.live_tv,
-            size: 65,
-            color: _mint,
+          Container(
+            width: 86,
+            height: 86,
+            decoration: BoxDecoration(
+              color: _mint.withValues(alpha: 0.09),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.live_tv_rounded,
+              size: 42,
+              color: _mint,
+            ),
           ),
-          const SizedBox(height: 17),
-          const Text(
-            'Your screen. Your channels.',
-            style: TextStyle(
-              fontSize: 21,
+          const SizedBox(height: 20),
+          Text(
+            noAccount
+                ? 'Welcome to NOVA'
+                : 'Nothing to show here',
+            style: const TextStyle(
+              fontSize: 22,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Add your own M3U playlist or Xtream Codes subscription.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white54,
+          const SizedBox(height: 9),
+          Text(
+            noAccount
+                ? 'Connect your subscription or add an M3U playlist.'
+                : 'Try another category or search term.',
+            style: const TextStyle(
+              color: _muted,
               fontSize: 12,
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 19),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-              backgroundColor: _mint,
-              foregroundColor: const Color(0xFF07131B),
+          if (noAccount) ...[
+            const SizedBox(height: 22),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FilledButton.icon(
+                  onPressed: _addXtream,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Connect Xtream'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _mint,
+                    foregroundColor: const Color(0xFF07131B),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: _addM3u,
+                  icon: const Icon(Icons.link),
+                  label: const Text('Add M3U'),
+                ),
+              ],
             ),
-            onPressed: _addXtream,
-            icon: const Icon(Icons.add),
-            label: const Text('Connect subscription'),
-          ),
+          ],
         ],
       ),
     );

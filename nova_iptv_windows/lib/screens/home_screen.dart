@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -47,19 +46,31 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initialize() async {
-    _favorites = await _libraryStorage.getFavorites();
-    _history = await _libraryStorage.getHistory();
+    try {
+      final favorites = await _libraryStorage.getFavorites();
+      final history = await _libraryStorage.getHistory();
 
-    final saved = await _accountStorage.read();
+      if (!mounted) return;
 
-    if (saved != null) {
-      _account = saved;
-      _server.text = saved.server;
-      _username.text = saved.username;
-      await _connectXtream(saved, saveAccount: false);
+      setState(() {
+        _favorites = favorites;
+        _history = history;
+      });
+
+      final saved = await _accountStorage.read();
+
+      if (!mounted) return;
+
+      if (saved != null) {
+        _account = saved;
+        _server.text = saved.server;
+        _username.text = saved.username;
+
+        await _connectXtream(saved, saveAccount: false);
+      }
+    } catch (_) {
+      _notice('Could not restore saved data.');
     }
-
-    if (mounted) setState(() {});
   }
 
   @override
@@ -97,6 +108,8 @@ class _HomeScreenState extends State<HomeScreen> {
     XtreamAccount account, {
     bool saveAccount = true,
   }) async {
+    if (!mounted) return;
+
     setState(() => _busy = true);
 
     final service = XtreamService();
@@ -113,8 +126,11 @@ class _HomeScreenState extends State<HomeScreen> {
               c['category_name']?.toString() ?? 'Other'
       };
 
-      final parsed = liveRows.map((e) {
+      final parsed = liveRows
+          .where((e) => e['stream_id'] != null)
+          .map((e) {
         final id = e['stream_id'].toString();
+
         final extension =
             (e['container_extension'] ?? 'ts')
                 .toString()
@@ -141,22 +157,24 @@ class _HomeScreenState extends State<HomeScreen> {
         await _accountStorage.save(account);
       }
 
-      _account = account;
-      _channels = parsed;
-      _movies = [];
-      _series = [];
-      _filter = 'All';
+      if (!mounted) return;
 
-      if (mounted) {
-        setState(() {
-          _section = 'Live TV';
-          _busy = false;
-        });
-      }
+      setState(() {
+        _account = account;
+        _channels = parsed;
+        _movies = [];
+        _series = [];
+        _filter = 'All';
+        _section = 'Live TV';
+        _busy = false;
+      });
 
       _notice('Connected. Loaded ${parsed.length} live channels.');
     } catch (_) {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+
       _notice('Connection failed. Check your subscription and try again.');
     } finally {
       service.close();
@@ -186,12 +204,16 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               TextField(
                 controller: _username,
-                decoration: const InputDecoration(labelText: 'Username'),
+                decoration: const InputDecoration(
+                  labelText: 'Username',
+                ),
               ),
               TextField(
                 controller: _password,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: 'Password'),
+                decoration: const InputDecoration(
+                  labelText: 'Password',
+                ),
               ),
             ],
           ),
@@ -209,7 +231,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    if (ok != true) return;
+    if (ok != true || !mounted) return;
 
     final account = XtreamAccount(
       server: _server.text.trim(),
@@ -221,15 +243,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadMovies() async {
-    if (_account == null || _movies.isNotEmpty) return;
+    final account = _account;
 
-    setState(() => _busy = true);
+    if (account == null || _movies.isNotEmpty) return;
+
+    if (mounted) {
+      setState(() => _busy = true);
+    }
 
     final service = XtreamService();
 
     try {
-      final categories = await service.vodCategories(_account!);
-      final rows = await service.vodStreams(_account!);
+      final categories = await service.vodCategories(account);
+      final rows = await service.vodStreams(account);
 
       final categoryNames = {
         for (final c in categories)
@@ -237,12 +263,16 @@ class _HomeScreenState extends State<HomeScreen> {
               c['category_name']?.toString() ?? 'Other'
       };
 
-      _movies = rows.map((e) {
+      final parsed = rows
+          .where((e) => e['stream_id'] != null)
+          .map((e) {
         final id = e['stream_id'].toString();
+
         final extension =
             (e['container_extension'] ?? 'mp4')
                 .toString()
                 .replaceFirst('.', '');
+
         final categoryId = e['category_id']?.toString();
 
         return Channel(
@@ -251,15 +281,23 @@ class _HomeScreenState extends State<HomeScreen> {
           extension: extension,
           contentType: 'movie',
           name: (e['name'] ?? 'Movie').toString(),
-          url: _streamUrl(_account!, 'movie', id, extension),
+          url: _streamUrl(account, 'movie', id, extension),
           logo: e['stream_icon']?.toString(),
           group: categoryNames[categoryId] ?? 'Other',
         );
       }).toList();
 
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _movies = parsed;
+          _busy = false;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+
       _notice('Could not load movies.');
     } finally {
       service.close();
@@ -267,18 +305,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadSeries() async {
-    if (_account == null || _series.isNotEmpty) return;
+    final account = _account;
 
-    setState(() => _busy = true);
+    if (account == null || _series.isNotEmpty) return;
+
+    if (mounted) {
+      setState(() => _busy = true);
+    }
 
     final service = XtreamService();
 
     try {
-      _series = await service.series(_account!);
+      final result = await service.series(account);
 
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _series = result;
+          _busy = false;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+
       _notice('Could not load series.');
     } finally {
       service.close();
@@ -286,13 +336,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openSeries(dynamic item) async {
-    if (_account == null) return;
+    final account = _account;
+
+    if (account == null) return;
 
     final service = XtreamService();
 
     try {
       final details = await service.seriesInfo(
-        _account!,
+        account,
         item['series_id'].toString(),
       );
 
@@ -301,13 +353,37 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (episodes is Map) {
         for (final season in episodes.values) {
-          if (season is List) allEpisodes.addAll(season);
+          if (season is List) {
+            allEpisodes.addAll(season);
+          }
         }
       } else if (episodes is List) {
         allEpisodes.addAll(episodes);
       }
 
       if (!mounted) return;
+
+      final episodeChannels = allEpisodes
+          .where((e) =>
+              e['id'] != null || e['episode_id'] != null)
+          .map((episode) {
+        final id =
+            (episode['id'] ?? episode['episode_id']).toString();
+
+        final extension =
+            (episode['container_extension'] ?? 'mp4')
+                .toString()
+                .replaceFirst('.', '');
+
+        return Channel(
+          id: id,
+          extension: extension,
+          contentType: 'episode',
+          name: (episode['title'] ?? 'Episode').toString(),
+          url: _streamUrl(account, 'series', id, extension),
+          group: item['name']?.toString() ?? 'Series',
+        );
+      }).toList();
 
       await showDialog(
         context: context,
@@ -316,41 +392,28 @@ class _HomeScreenState extends State<HomeScreen> {
           content: SizedBox(
             width: 500,
             height: 400,
-            child: allEpisodes.isEmpty
-                ? const Center(child: Text('No episodes available.'))
+            child: episodeChannels.isEmpty
+                ? const Center(
+                    child: Text('No episodes available.'),
+                  )
                 : ListView.builder(
-                    itemCount: allEpisodes.length,
+                    itemCount: episodeChannels.length,
                     itemBuilder: (context, index) {
-                      final episode = allEpisodes[index];
-                      final id =
-                          (episode['id'] ?? episode['episode_id']).toString();
-                      final extension =
-                          (episode['container_extension'] ?? 'mp4')
-                              .toString()
-                              .replaceFirst('.', '');
-
-                      final channel = Channel(
-                        id: id,
-                        extension: extension,
-                        contentType: 'episode',
-                        name: (episode['title'] ??
-                                'Episode ${index + 1}')
-                            .toString(),
-                        url: _streamUrl(
-                          _account!,
-                          'series',
-                          id,
-                          extension,
-                        ),
-                        group: item['name']?.toString() ?? 'Series',
-                      );
+                      final channel = episodeChannels[index];
 
                       return ListTile(
-                        leading: const Icon(Icons.play_circle_outline),
+                        leading: const Icon(
+                          Icons.play_circle_outline,
+                        ),
                         title: Text(channel.name),
                         onTap: () {
                           Navigator.pop(dialogContext);
-                          _play(channel);
+
+                          _play(
+                            channel,
+                            queue: episodeChannels,
+                            index: index,
+                          );
                         },
                       );
                     },
@@ -396,43 +459,71 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(context, _playlist.text.trim()),
+            onPressed: () {
+              Navigator.pop(context, _playlist.text.trim());
+            },
             child: const Text('Add'),
           ),
         ],
       ),
     );
 
-    if (value == null || value.isEmpty) return;
+    if (value == null || value.isEmpty || !mounted) return;
 
     setState(() => _busy = true);
 
     try {
-      final content = value.startsWith('#EXTM3U')
-          ? value
-          : (await http.get(Uri.parse(value))
-                  .timeout(const Duration(seconds: 30)))
-              .body;
+      String content;
+
+      if (value.startsWith('#EXTM3U')) {
+        content = value;
+      } else {
+        final uri = Uri.tryParse(value);
+
+        if (uri == null ||
+            !uri.hasScheme ||
+            !uri.hasAuthority) {
+          throw const FormatException('Invalid playlist URL');
+        }
+
+        final response = await http
+            .get(uri)
+            .timeout(const Duration(seconds: 30));
+
+        if (response.statusCode != 200) {
+          throw Exception('Playlist request failed');
+        }
+
+        content = response.body;
+      }
 
       final parsed = M3uParser.parse(content);
 
-      if (mounted) {
-        setState(() {
-          _channels = parsed;
-          _movies = [];
-          _series = [];
-          _account = null;
-          _section = 'Live TV';
-          _filter = 'All';
-          _busy = false;
-        });
+      if (parsed.isEmpty) {
+        throw const FormatException('Empty playlist');
       }
+
+      await _accountStorage.delete();
+
+      if (!mounted) return;
+
+      setState(() {
+        _channels = parsed;
+        _movies = [];
+        _series = [];
+        _account = null;
+        _section = 'Live TV';
+        _filter = 'All';
+        _busy = false;
+      });
 
       _notice('Loaded ${parsed.length} playlist entries.');
     } catch (_) {
-      if (mounted) setState(() => _busy = false);
-      _notice('Could not load playlist.');
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+
+      _notice('Could not load playlist. Check the URL or content.');
     }
   }
 
@@ -479,7 +570,9 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _openSection(String section) async {
@@ -488,8 +581,19 @@ class _HomeScreenState extends State<HomeScreen> {
       _filter = 'All';
     });
 
-    if (section == 'Movies') await _loadMovies();
-    if (section == 'Series') await _loadSeries();
+    if (section == 'Movies') {
+      await _loadMovies();
+    }
+
+    if (section == 'Series') {
+      await _loadSeries();
+    }
+
+    if ((section == 'Favorites' ||
+            section == 'Recently played') &&
+        _account != null) {
+      await _loadMovies();
+    }
   }
 
   Future<void> _settings() async {
@@ -519,6 +623,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (remove == true) {
       await _accountStorage.delete();
 
+      if (!mounted) return;
+
       setState(() {
         _account = null;
         _channels = [];
@@ -543,12 +649,18 @@ class _HomeScreenState extends State<HomeScreen> {
           ..._channels,
           ..._movies,
         ].where((c) => _history.contains(c.uniqueKey)).toList()
-          ..sort((a, b) => _history.indexOf(a.uniqueKey)
-              .compareTo(_history.indexOf(b.uniqueKey))),
+          ..sort(
+            (a, b) => _history
+                .indexOf(a.uniqueKey)
+                .compareTo(_history.indexOf(b.uniqueKey)),
+          ),
       _ => _channels,
     };
 
-    final groups = currentItems.map((c) => c.group).toSet().toList()
+    final groups = currentItems
+        .map((c) => c.group)
+        .toSet()
+        .toList()
       ..sort();
 
     final filtered = currentItems.where((c) {
@@ -570,8 +682,11 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.play_circle_fill,
-                        color: Color(0xFF40D9C4), size: 30),
+                    Icon(
+                      Icons.play_circle_fill,
+                      color: Color(0xFF40D9C4),
+                      size: 30,
+                    ),
                     SizedBox(width: 9),
                     Text(
                       'NOVA',
@@ -626,7 +741,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 const Spacer(),
                 const Text(
                   'NOVA IPTV • v0.3',
-                  style: TextStyle(color: Colors.white30, fontSize: 10),
+                  style: TextStyle(
+                    color: Colors.white30,
+                    fontSize: 10,
+                  ),
                 ),
               ],
             ),
@@ -661,7 +779,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   const SizedBox(height: 22),
-                  if (_section != 'Series' && _section != 'Settings') ...[
+                  if (_section != 'Series' &&
+                      _section != 'Settings') ...[
                     Row(
                       children: [
                         SizedBox(
@@ -688,13 +807,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               )
                               .toList(),
-                          onChanged: (v) =>
-                              setState(() => _filter = v ?? 'All'),
+                          onChanged: (v) {
+                            setState(() => _filter = v ?? 'All');
+                          },
                         ),
                         const Spacer(),
                         Text(
                           '${filtered.length} items',
-                          style: const TextStyle(color: Colors.white54),
+                          style: const TextStyle(
+                            color: Colors.white54,
+                          ),
                         ),
                       ],
                     ),
@@ -702,7 +824,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                   Expanded(
                     child: _busy
-                        ? const Center(child: CircularProgressIndicator())
+                        ? const Center(
+                            child: CircularProgressIndicator(),
+                          )
                         : _section == 'Series'
                             ? _buildSeries()
                             : filtered.isEmpty
@@ -720,7 +844,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildGrid(List<Channel> items) {
     return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+      gridDelegate:
+          const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 245,
         mainAxisExtent: 125,
         crossAxisSpacing: 13,
@@ -753,7 +878,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           channel.name,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Text(
@@ -773,8 +900,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     IconButton(
-                      tooltip:
-                          favorite ? 'Remove favorite' : 'Add favorite',
+                      tooltip: favorite
+                          ? 'Remove favorite'
+                          : 'Add favorite',
                       onPressed: () => _toggleFavorite(channel),
                       icon: Icon(
                         favorite ? Icons.star : Icons.star_border,
@@ -806,7 +934,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_series.isEmpty) return _emptyState();
 
     return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+      gridDelegate:
+          const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 245,
         mainAxisExtent: 110,
         crossAxisSpacing: 13,

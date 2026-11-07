@@ -15,21 +15,16 @@ class XtreamService {
 
   void _checkResponse(http.Response response, Uri uri) {
     if (response.statusCode != 200) {
-      final body = response.body.trim();
-      final details = body.isEmpty
-          ? 'Empty server response'
-          : body.substring(0, body.length > 500 ? 500 : body.length);
-
       throw Exception(
         'HTTP ${response.statusCode}\n'
-        'Request: ${_safeUrl(uri)}\n'
-        'Server response: $details',
+        'Request: ${_safeUrl(uri)}',
       );
     }
   }
 
   Future<Map<String, dynamic>> authenticate(
-      XtreamAccount account) async {
+    XtreamAccount account,
+  ) async {
     final uri = account.apiUri.replace(queryParameters: {
       'username': account.username,
       'password': account.password,
@@ -70,6 +65,58 @@ class XtreamService {
     );
   }
 
+  Future<List<dynamic>> vodCategories(XtreamAccount account) {
+    return _getList(account, 'get_vod_categories');
+  }
+
+  Future<List<dynamic>> vodStreams(
+    XtreamAccount account, {
+    String? categoryId,
+  }) {
+    return _getList(
+      account,
+      'get_vod_streams',
+      categoryId: categoryId,
+    );
+  }
+
+  Future<Map<String, dynamic>> vodInfo(
+    XtreamAccount account,
+    String vodId,
+  ) {
+    return _getMap(
+      account,
+      'get_vod_info',
+      extra: {'vod_id': vodId},
+    );
+  }
+
+  Future<List<dynamic>> seriesCategories(XtreamAccount account) {
+    return _getList(account, 'get_series_categories');
+  }
+
+  Future<List<dynamic>> series(
+    XtreamAccount account, {
+    String? categoryId,
+  }) {
+    return _getList(
+      account,
+      'get_series',
+      categoryId: categoryId,
+    );
+  }
+
+  Future<Map<String, dynamic>> seriesInfo(
+    XtreamAccount account,
+    String seriesId,
+  ) {
+    return _getMap(
+      account,
+      'get_series_info',
+      extra: {'series_id': seriesId},
+    );
+  }
+
   Future<List<dynamic>> _getList(
     XtreamAccount account,
     String action, {
@@ -81,7 +128,7 @@ class XtreamService {
       'action': action,
     };
 
-    if (categoryId != null) {
+    if (categoryId != null && categoryId.isNotEmpty) {
       params['category_id'] = categoryId;
     }
 
@@ -98,6 +145,37 @@ class XtreamService {
     if (data is! List) {
       throw const FormatException(
         'Unexpected catalogue response',
+      );
+    }
+
+    return data;
+  }
+
+  Future<Map<String, dynamic>> _getMap(
+    XtreamAccount account,
+    String action, {
+    Map<String, String> extra = const {},
+  }) async {
+    final params = <String, String>{
+      'username': account.username,
+      'password': account.password,
+      'action': action,
+      ...extra,
+    };
+
+    final uri = account.apiUri.replace(queryParameters: params);
+
+    final response = await _client
+        .get(uri)
+        .timeout(const Duration(seconds: 30));
+
+    _checkResponse(response, uri);
+
+    final data = jsonDecode(response.body);
+
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException(
+        'Unexpected details response',
       );
     }
 

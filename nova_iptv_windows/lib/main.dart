@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 import 'screens/home_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  MediaKit.ensureInitialized();
+
   runApp(const NovaApp());
 }
 
@@ -12,6 +16,7 @@ class NovaApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const mint = Color(0xFF40D9C4);
+
     return MaterialApp(
       title: 'NOVA IPTV',
       debugShowCheckedModeBanner: false,

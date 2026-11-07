@@ -18,7 +18,6 @@ class Channel {
   final String group;
   final String? tvgId;
 
-  // Content information
   final String? id;
   final String? categoryId;
   final String? extension;
@@ -31,6 +30,13 @@ class Channel {
       return '$contentType:$id';
     }
 
-    return '$contentType:${url.hashCode}';
+    var hash = 0x811c9dc5;
+
+    for (final codeUnit in url.codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+
+    return '$contentType:${hash.toRadixString(16)}';
   }
 }

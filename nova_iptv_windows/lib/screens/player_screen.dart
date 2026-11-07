@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
+
 import '../models/channel.dart';
 
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({super.key, required this.channel});
+
   final Channel channel;
 
   @override
@@ -11,54 +16,103 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  VideoPlayerController? _controller;
+  late final Player _player;
+  late final VideoController _controller;
+
+  StreamSubscription<String>? _errorSubscription;
+
+  bool _loading = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+
+    _player = Player();
+    _controller = VideoController(_player);
+
+    _errorSubscription = _player.stream.error.listen((message) {
+      if (!mounted) return;
+
+      setState(() {
+        _error = message;
+        _loading = false;
+      });
+    });
+
     _start();
   }
 
   Future<void> _start() async {
     try {
-      final c = VideoPlayerController.networkUrl(Uri.parse(widget.channel.url));
-      _controller = c;
-      await c.initialize();
-      await c.play();
-      if (mounted) setState(() {});
+      await _player.open(Media(widget.channel.url));
+
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+      });
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (!mounted) return;
+
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
     }
   }
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _errorSubscription?.cancel();
+    unawaited(_player.dispose());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final c = _controller;
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(title: Text(widget.channel.name), backgroundColor: Colors.black),
+      appBar: AppBar(
+        title: Text(widget.channel.name),
+        backgroundColor: Colors.black,
+      ),
       body: Center(
         child: _error != null
-          ? Padding(padding: const EdgeInsets.all(24), child: Text('Playback error\n$_error', textAlign: TextAlign.center))
-          : c == null || !c.value.isInitialized
-            ? const CircularProgressIndicator()
-            : AspectRatio(
-                aspectRatio: c.value.aspectRatio,
-                child: Stack(alignment: Alignment.bottomCenter, children: [
-                  VideoPlayer(c),
-                  VideoProgressIndicator(c, allowScrubbing: true),
-                  Positioned(bottom: 24, child: IconButton.filled(
-                    onPressed: () => setState(() => c.value.isPlaying ? c.pause() : c.play()),
-                    icon: Icon(c.value.isPlaying ? Icons.pause : Icons.play_arrow),
-                  )),
-                ]),
+            ? Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Playback error\n$_error',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              )
+            : Stack(
+                alignment: Alignment.center,
+                children: [
+                  Video(
+                    controller: _controller,
+                    controls: MaterialDesktopVideoControls,
+                  ),
+
+                  if (_loading)
+                    const CircularProgressIndicator(
+                      color: Color(0xFF40D9C4),
+                    ),
+
+                  StreamBuilder<bool>(
+                    stream: _player.stream.buffering,
+                    builder: (context, snapshot) {
+                      if (snapshot.data != true || _error != null) {
+                        return const SizedBox.shrink();
+                      }
+
+                      return const CircularProgressIndicator(
+                        color: Color(0xFF40D9C4),
+                      );
+                    },
+                  ),
+                ],
               ),
       ),
     );

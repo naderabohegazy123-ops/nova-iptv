@@ -25,6 +25,14 @@ jobs:
         working-directory: nova_iptv_windows
         run: flutter create --platforms=windows --project-name=nova_iptv .
 
+      - name: Remove Default Flutter Test
+        working-directory: nova_iptv_windows
+        shell: pwsh
+        run: |
+          if (Test-Path "test/widget_test.dart") {
+            Remove-Item "test/widget_test.dart" -Force
+          }
+
       - name: Install Dependencies
         working-directory: nova_iptv_windows
         run: flutter pub get

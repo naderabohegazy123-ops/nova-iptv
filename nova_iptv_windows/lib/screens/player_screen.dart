@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../models/channel.dart';
 
@@ -211,6 +212,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void dispose() {
     _saveProgress();
+    if (_fullscreen) {
+      windowManager.setFullScreen(false);
+    }
     _positionSubscription?.cancel();
     _player.dispose();
     super.dispose();
@@ -422,8 +426,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 tooltip: _fullscreen
                     ? 'Exit fullscreen'
                     : 'Fullscreen',
-                onPressed: () {
-                  setState(() => _fullscreen = !_fullscreen);
+                onPressed: () async {
+                  final nextFullscreen = !_fullscreen;
+                  try {
+                    await windowManager.setFullScreen(nextFullscreen);
+                    if (mounted) {
+                      setState(() => _fullscreen = nextFullscreen);
+                    }
+                  } catch (_) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Could not change fullscreen mode.'),
+                        ),
+                      );
+                    }
+                  }
                 },
                 icon: Icon(
                   _fullscreen

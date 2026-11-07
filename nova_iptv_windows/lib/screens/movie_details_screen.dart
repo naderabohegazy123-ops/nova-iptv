@@ -10,10 +10,12 @@ class MovieDetailsScreen extends StatefulWidget {
     super.key,
     required this.account,
     required this.channel,
+    required this.onPlay,
   });
 
   final XtreamAccount account;
   final Channel channel;
+  final VoidCallback onPlay;
 
   @override
   State<MovieDetailsScreen> createState() =>
@@ -44,7 +46,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
     if (id == null || id.isEmpty) {
       setState(() {
         _loading = false;
-        _error = 'Movie ID is not available';
+        _error = 'Movie ID is not available.';
       });
       return;
     }
@@ -61,11 +63,11 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
         _info = result;
         _loading = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
 
       setState(() {
-        _error = 'Could not load movie details';
+        _error = 'Could not load additional movie details.';
         _loading = false;
       });
     }
@@ -73,17 +75,21 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
 
   Map<String, dynamic> get _movieInfo {
     final value = _info['info'];
+
     if (value is Map) {
       return Map<String, dynamic>.from(value);
     }
+
     return {};
   }
 
   Map<String, dynamic> get _movieData {
     final value = _info['movie_data'];
+
     if (value is Map) {
       return Map<String, dynamic>.from(value);
     }
+
     return {};
   }
 
@@ -91,53 +97,66 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
     for (final value in values) {
       if (value == null) continue;
 
-      final text = value.toString().trim();
+      final result = value.toString().trim();
 
-      if (text.isNotEmpty &&
-          text.toLowerCase() != 'null' &&
-          text != '0') {
-        return text;
+      if (result.isNotEmpty &&
+          result.toLowerCase() != 'null' &&
+          result != '0') {
+        return result;
       }
     }
 
     return null;
   }
 
-  String? get _poster =>
-      _value([_movieInfo['movie_image'], widget.channel.logo]);
+  String? get _poster => _value([
+        _movieInfo['movie_image'],
+        widget.channel.logo,
+      ]);
 
-  String? get _name =>
-      _value([_movieInfo['name'], _movieData['name'], widget.channel.name]);
+  String? get _name => _value([
+        _movieInfo['name'],
+        _movieData['name'],
+        widget.channel.name,
+      ]);
 
-  String? get _year =>
-      _value([
+  String? get _year => _value([
         _movieInfo['releasedate'],
         _movieInfo['release_date'],
         _movieInfo['year'],
         widget.channel.year,
       ]);
 
-  String? get _rating =>
-      _value([_movieInfo['rating'], widget.channel.rating]);
+  String? get _rating => _value([
+        _movieInfo['rating'],
+        widget.channel.rating,
+      ]);
 
-  String? get _plot =>
-      _value([
+  String? get _plot => _value([
         _movieInfo['plot'],
         _movieInfo['description'],
         widget.channel.plot,
       ]);
 
-  String? get _genre =>
-      _value([_movieInfo['genre'], widget.channel.genre]);
+  String? get _genre => _value([
+        _movieInfo['genre'],
+        widget.channel.genre,
+      ]);
 
-  String? get _duration =>
-      _value([_movieInfo['duration'], widget.channel.duration]);
+  String? get _duration => _value([
+        _movieInfo['duration'],
+        widget.channel.duration,
+      ]);
 
-  String? get _director =>
-      _value([_movieInfo['director'], widget.channel.director]);
+  String? get _director => _value([
+        _movieInfo['director'],
+        widget.channel.director,
+      ]);
 
-  String? get _cast =>
-      _value([_movieInfo['cast'], widget.channel.cast]);
+  String? get _cast => _value([
+        _movieInfo['cast'],
+        widget.channel.cast,
+      ]);
 
   List<String> get _backdrops {
     final value = _movieInfo['backdrop_path'];
@@ -148,6 +167,7 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
             if (item is Map) {
               return item['url']?.toString() ?? '';
             }
+
             return item.toString();
           })
           .where((item) => item.startsWith('http'))
@@ -158,9 +178,10 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
       return [value];
     }
 
-    if (widget.channel.backdrop != null &&
-        widget.channel.backdrop!.startsWith('http')) {
-      return [widget.channel.backdrop!];
+    final fallback = widget.channel.backdrop;
+
+    if (fallback != null && fallback.startsWith('http')) {
+      return [fallback];
     }
 
     return [];
@@ -169,34 +190,27 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
   Widget _posterWidget() {
     final poster = _poster;
 
-    if (poster == null) {
-      return Container(
-        color: _card,
-        child: const Center(
-          child: Icon(
-            Icons.movie_outlined,
-            size: 65,
-            color: _muted,
-          ),
-        ),
-      );
+    if (poster == null || !poster.startsWith('http')) {
+      return _posterFallback();
     }
 
     return Image.network(
       poster,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) {
-        return Container(
-          color: _card,
-          child: const Center(
-            child: Icon(
-              Icons.movie_outlined,
-              size: 65,
-              color: _muted,
-            ),
-          ),
-        );
-      },
+      errorBuilder: (_, __, ___) => _posterFallback(),
+    );
+  }
+
+  Widget _posterFallback() {
+    return Container(
+      color: _card,
+      child: const Center(
+        child: Icon(
+          Icons.movie_outlined,
+          size: 65,
+          color: _muted,
+        ),
+      ),
     );
   }
 
@@ -231,7 +245,9 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
   }
 
   Widget _detail(String title, String? value) {
-    if (value == null) return const SizedBox.shrink();
+    if (value == null) {
+      return const SizedBox.shrink();
+    }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -287,7 +303,6 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
       appBar: AppBar(
         backgroundColor: _background,
         title: const Text('Movie Details'),
-        centerTitle: false,
       ),
       body: _loading
           ? const Center(
@@ -310,7 +325,6 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                             const SizedBox.shrink(),
                       ),
                     ),
-
                   Padding(
                     padding: const EdgeInsets.all(24),
                     child: Row(
@@ -344,11 +358,20 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                                 runSpacing: 8,
                                 children: [
                                   if (_year != null)
-                                    _tag(_year!, Icons.calendar_today),
+                                    _tag(
+                                      _year!,
+                                      Icons.calendar_today,
+                                    ),
                                   if (_rating != null)
-                                    _tag(_rating!, Icons.star),
+                                    _tag(
+                                      _rating!,
+                                      Icons.star,
+                                    ),
                                   if (_duration != null)
-                                    _tag(_duration!, Icons.schedule),
+                                    _tag(
+                                      _duration!,
+                                      Icons.schedule,
+                                    ),
                                 ],
                               ),
                               if (_genre != null) ...[
@@ -365,15 +388,16 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                               SizedBox(
                                 height: 46,
                                 child: ElevatedButton.icon(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                  },
-                                  icon: const Icon(Icons.play_arrow),
+                                  onPressed: widget.onPlay,
+                                  icon: const Icon(
+                                    Icons.play_arrow,
+                                  ),
                                   label: const Text('Play Movie'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: _mint,
                                     foregroundColor: _background,
-                                    padding: const EdgeInsets.symmetric(
+                                    padding:
+                                        const EdgeInsets.symmetric(
                                       horizontal: 22,
                                     ),
                                   ),
@@ -385,7 +409,6 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                       ],
                     ),
                   ),
-
                   if (_error != null)
                     Padding(
                       padding: const EdgeInsets.symmetric(
@@ -398,7 +421,6 @@ class _MovieDetailsScreenState extends State<MovieDetailsScreen> {
                         ),
                       ),
                     ),
-
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
